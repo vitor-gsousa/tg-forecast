@@ -291,12 +291,23 @@ def job_warnings():
                 except Exception:
                     pretty_end = w['endTime'].replace("T", " ")
 
+                try:
+                    pretty_awareness = {
+                        'YELLOW': '🟡 Alerta Amarelo',
+                        'ORANGE': '🟠 Alerta Laranja',
+                        'RED': '🔴 Alerta Vermelho',
+                        'GREEN': '🟢 Alerta Verde'
+                    }[w['awarenessLevelID'].upper()]
+                except KeyError:
+                    pretty_awareness = w['awarenessLevelID'].capitalize()
+
                 msg = (
                     f"⚠️ *AVISO IPMA: {location_name}*\n"
-                    f"Tipo: {w['awarenessTypeName']}\n"
-                    f"🔴 Nível: {w['awarenessLevelID'].upper()}\n"
+                    f"👉 Tipo: {w['awarenessTypeName']}\n"
+                    f"{pretty_awareness}\n"
                     f"🕒 {pretty_start} até {pretty_end}\n"
-                    f"📝 {w['text']}"
+                    f"📝 {w['text']}\n"
+                    f"🌍 Fonte: ![ipma.pt](https://www.ipma.pt/pt/otempo/prev-sam/"
                 )
                 send_message_text(msg)
                 sent_warnings_cache.add(w_id)
@@ -317,8 +328,9 @@ if __name__ == "__main__":
 
     get_location_name()
     job_forecast() # Teste
-    logging.info("Testes executados.")
-    #job_warnings() # Teste
+    logging.info("Testes previsões meteo executados.")
+    job_warnings() # Teste
+    logging.info("Testes avisos executados.")
 
     schedule.every(CHECK_INTERVAL).minutes.do(job_warnings)
     schedule.every().day.at(FORECAST_TIME).do(job_forecast)
