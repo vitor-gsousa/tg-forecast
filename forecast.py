@@ -227,7 +227,7 @@ def job_forecast():
     try:
         resp = requests.get(f"{FORECAST_BASE}{CITY_ID}.json", timeout=15)
         resp.raise_for_status()
-        forecast = resp.json()['data'][0]
+        forecast = resp.json()['data'][1]
 
         weather_map = load_weather_types()
         weather_desc = weather_map.get(int(forecast['idWeatherType']), str(forecast['idWeatherType']))
