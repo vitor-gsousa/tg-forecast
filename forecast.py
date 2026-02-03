@@ -253,7 +253,7 @@ def job_forecast():
             f"🌡️ Min: {forecast['tMin']}ºC | Max: {forecast['tMax']}ºC\n"
             f"☔ Previsão de chuva: {forecast['precipitaProb']}%\n"
             f"💨 Vento de {get_wind_dir_desc(forecast['predWindDir'])} - {wind_desc}\n"
-            f"🌍 Fonte: ![ipma.pt](https://www.ipma.pt/pt/otempo/prev.localidade.hora/#Porto&Pa%C3%A7os%20de%20Ferreira)"
+            f"🌍 Fonte: [ipma.pt](https://www.ipma.pt/pt/otempo/prev.localidade.hora/#Porto&Pa%C3%A7os%20de%20Ferreira)"
         )
 
         if image_path:
@@ -307,7 +307,7 @@ def job_warnings():
                     f"{pretty_awareness}\n"
                     f"🕒 {pretty_start} até {pretty_end}\n"
                     f"📝 {w['text']}\n"
-                    f"🌍 Fonte: ![ipma.pt](https://www.ipma.pt/pt/otempo/prev-sam/"
+                    f"🌍 Fonte: [ipma.pt](https://www.ipma.pt/pt/otempo/prev-sam/"
                 )
                 send_message_text(msg)
                 sent_warnings_cache.add(w_id)
