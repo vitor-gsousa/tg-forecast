@@ -1,0 +1,25 @@
+services:
+  tg-forecast:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tg-forecast-bot
+    restart: unless-stopped
+    environment:
+      - TZ=Europe/Lisbon
+    env_file:
+      - .env
+    volumes:
+      # Monta o diretório de imagens caso queira persistir ou atualizar dinamicamente
+      - ./images:/app/images
+      # Opcional: volume para logs
+      - ./logs:/app/logs
+    # Configurações de memória (opcional, ajuste conforme necessário)
+    mem_limit: 256m
+    mem_reservation: 128m
+    # Política de logging para evitar crescimento excessivo de logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
