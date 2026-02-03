@@ -246,12 +246,14 @@ def job_forecast():
         image_path = get_local_image_path(forecast['idWeatherType'])
 
         caption = (
-            f"📅 *Meteo: {pretty_date}*\n"
+            f"👀 *Previsão do tempo para amanhã:*\n"
+            f"📅 *{pretty_date}*\n"
             f"📍 {location_name}\n"
             f"🌤️ {weather_desc}\n"
             f"🌡️ Min: {forecast['tMin']}ºC | Max: {forecast['tMax']}ºC\n"
             f"☔ Previsão de chuva: {forecast['precipitaProb']}%\n"
-            f"💨 Vento: {wind_desc} (Rumo: {get_wind_dir_desc(forecast['predWindDir'])})"
+            f"💨 Vento de {get_wind_dir_desc(forecast['predWindDir'])} - {wind_desc}\n"
+            f"🌍 Fonte: ![ipma.pt](https://www.ipma.pt/pt/otempo/prev.localidade.hora/#Porto&Pa%C3%A7os%20de%20Ferreira)"
         )
 
         if image_path:
