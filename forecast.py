@@ -18,7 +18,7 @@ WARNINGS_URL = os.getenv("IPMA_WARNINGS_URL")
 FORECAST_BASE = os.getenv("IPMA_FORECAST_BASE")
 DISTRICTS = os.getenv("DISTRICTS_URL")
 WEATHER_TYPES = os.getenv("WEATHER_TYPES_URL")
-WIND_TYPES = os.getenv("WIND_TYPES_URL") or os.getenv("WIND_TYPES")
+WIND_TYPES = os.getenv("WIND_TYPES_URL")
 CITY_ID = os.getenv("IPMA_CITY_ID")
 AREA_ID = os.getenv("TARGET_AREA_ID")
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL_MINUTES", 60))
@@ -144,51 +144,69 @@ def get_wind_dir_desc(dir_code):
 
 def get_local_image_path(weather_id):
     """
-    Constrói o caminho da imagem dia usando o padrão w_ic_d_<id>.png
-    - Se id < 10: w_ic_d_0{id}.png
-    - Caso contrário: w_ic_d_{id}.png
+    Constrói o caminho da imagem dia usando o padrão w_ic_d_<id>.(tgs|png)
+    - Se id < 10: w_ic_d_0{id}.tgs/.png
+    - Caso contrário: w_ic_d_{id}.tgs/.png
+    Dá prioridade a .tgs se existir, senão usa .png.
     """
     wid = int(weather_id)
     if wid < 10:
-        filename = f"w_ic_d_0{wid}.png"
+        base = f"w_ic_d_0{wid}"
     else:
-        filename = f"w_ic_d_{wid}.png"
+        base = f"w_ic_d_{wid}"
 
-    filepath = os.path.join(IMAGES_DIR, filename)
+    # Primeiro tenta .tgs
+    tgs_path = os.path.join(IMAGES_DIR, base + ".tgs")
+    if os.path.exists(tgs_path):
+        return tgs_path
 
-    if os.path.exists(filepath):
-        return filepath
-    else:
-        # Fallback: Tenta sem sufixo (ex: CLEAR.png) se a versão dia/noite falhar
-        #fallback_path = os.path.join(IMAGES_DIR, f"{base_name}.png")
-        #if os.path.exists(fallback_path):
-        #    return fallback_path
+    # Fallback para .png
+    png_path = os.path.join(IMAGES_DIR, base + ".png")
+    if os.path.exists(png_path):
+        return png_path
 
-        logging.warning(f"Imagem não encontrada: {filepath}")
-        return None
+    return None
 
-def send_telegram_photo_local(caption, image_path):
+def send_telegram_media(caption, image_path):
+    """
+    FIX: Renomeado para 'media' e lógica de envio inteligente (Sticker vs Photo).
+    """
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID: return
 
     try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
-        data = {
-            "chat_id": TELEGRAM_CHAT_ID,
-            "caption": caption,
-            "parse_mode": "Markdown",
-        }
+        ext = os.path.splitext(image_path)[1].lower()
+        
+        # Determina o endpoint baseados na extensão
+        if ext == '.tgs':
+            # Nota: sendSticker não suporta 'caption' nativamente em alguns clientes,
+            # mas vamos tentar enviar separado ou usar sendDocument se falhar.
+            # O ideal para TGS é enviar o sticker e DEPOIS o texto.
+            method = "sendSticker"
+            file_key = "sticker"
+            has_caption = False # Stickers não têm legenda
+        else:
+            method = "sendPhoto"
+            file_key = "photo"
+            has_caption = True
 
-        # Abre o ficheiro binário e envia
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/{method}"
+        data = {"chat_id": TELEGRAM_CHAT_ID}
+        
+        if has_caption:
+            data["caption"] = caption
+            data["parse_mode"] = "Markdown"
+
         with open(image_path, 'rb') as f:
-            files = {"photo": f}
+            files = {file_key: f}
             resp = requests.post(url, data=data, files=files, timeout=30)
             resp.raise_for_status()
-
-        #logging.info(f"Foto enviada: {image_path}")
+        
+        # Se enviámos um sticker (sem legenda), enviamos o texto logo a seguir
+        if not has_caption:
+            send_message_text(caption)
 
     except Exception as e:
-        logging.error(f"Erro ao enviar foto: {e}")
-        # Fallback:
+        logging.error(f"Erro ao enviar media ({image_path}): {e}")
         send_message_text(caption)
 
 def send_message_text(msg):
@@ -212,18 +230,19 @@ def job_forecast():
         forecast = resp.json()['data'][0]
 
         weather_map = load_weather_types()
-        weather_desc = weather_map.get(int(forecast['idWeatherType']), str({forecast['idWeatherType']}))
-        wind_map = load_wind_types()
-        wind_desc = wind_map.get(int(forecast['classWindSpeed']), str(forecast['classWindSpeed']))
+        weather_desc = weather_map.get(int(forecast['idWeatherType']), str(forecast['idWeatherType']))
+        
+        # Otimização: Resolvemos a descrição do vento uma vez
+        wind_code = forecast['classWindSpeed']
+        wind_desc = resolve_wind_desc(wind_code)
 
         location_name = get_location_name()
 
         try:
             pretty_date = datetime.strptime(forecast['forecastDate'], "%Y-%m-%d").strftime("%d-%m-%Y")
-        except Exception:
+        except:
             pretty_date = forecast['forecastDate']
 
-        # Gera o caminho local da imagem
         image_path = get_local_image_path(forecast['idWeatherType'])
 
         caption = (
@@ -236,8 +255,8 @@ def job_forecast():
         )
 
         if image_path:
-            send_telegram_photo_local(caption, image_path)
-            logging.info(f"Previsão enviada com imagem.")
+            send_telegram_media(caption, image_path) # FIX: Usar a nova função
+            logging.info(f"Previsão enviada com imagem: {image_path}")
         else:
             send_message_text(caption)
             logging.info(f"Previsão enviada sem imagem.")
