@@ -357,6 +357,7 @@ def job_warnings() -> None:
 
                 msg = (
                     f"⚠️ *AVISO IPMA:*\n"
+                    f"\n"
                     f"📍 Região: *{location_name}*\n"
                     f"🔔 {w['awarenessTypeName']}\n"
                     f"{pretty_awareness}\n"
