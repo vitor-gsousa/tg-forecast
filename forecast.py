@@ -49,10 +49,10 @@ WEATHER_TYPES_FALLBACK = {
     21: "Granizo", 22: "Geada", 23: "Chuva e possibilidade de trovoada",
     24: "Nebulosidade convectiva", 25: "Céu com períodos de muito nublado",
     26: "Nevoeiro", 27: "Céu nublado", 28: "Aguaceiros de neve",
-    29: "Chuva e Neve", 30: "Chuva e Neve"
+    29: "Chuva e Neve", 30: "Chuva e Neve", -99: "---"
 }
 
-# Conversão de rumo do vento para PT
+# Conversão de direção do vento para PT
 WIND_DIR_PT = {
     "N": "Norte",
     "NE": "Nordeste",
@@ -67,6 +67,7 @@ WIND_DIR_PT = {
 # --- Funções Auxiliares ---
 
 def get_location_name():
+    """Resolve e faz cache do nome amigável da área alvo a partir do endpoint de distritos."""
     global location_name_cache
     if location_name_cache: return location_name_cache
     try:
@@ -96,7 +97,6 @@ def load_weather_types():
         resp.raise_for_status()
         data = resp.json().get("data", [])
         mapping = {int(item["idWeatherType"]): item.get("descWeatherTypePT", f"Desconhecido ({item['idWeatherType']})") for item in data}
-        # Se por algum motivo ficar vazio, usa fallback
         weather_types_cache = mapping if mapping else WEATHER_TYPES_FALLBACK
     except Exception as e:
         logging.error(f"Erro ao carregar weather types: {e}")
@@ -140,6 +140,7 @@ def resolve_wind_desc(raw_code):
         return str(raw_code)
 
 def get_wind_dir_desc(dir_code):
+    """Converte abreviaturas de direção de vento (N, NE, ...) para nomes completos em PT."""
     return WIND_DIR_PT.get(dir_code, dir_code)
 
 def get_local_image_path(weather_id):
@@ -168,9 +169,7 @@ def get_local_image_path(weather_id):
     return None
 
 def send_telegram_media(caption, image_path):
-    """
-    FIX: Renomeado para 'media' e lógica de envio inteligente (Sticker vs Photo).
-    """
+    """Envia media para o Telegram, escolhendo sticker para .tgs ou foto para restantes formatos."""
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID: return
 
     try:
@@ -178,9 +177,6 @@ def send_telegram_media(caption, image_path):
         
         # Determina o endpoint baseados na extensão
         if ext == '.tgs':
-            # Nota: sendSticker não suporta 'caption' nativamente em alguns clientes,
-            # mas vamos tentar enviar separado ou usar sendDocument se falhar.
-            # O ideal para TGS é enviar o sticker e DEPOIS o texto.
             method = "sendSticker"
             file_key = "sticker"
             has_caption = False # Stickers não têm legenda
@@ -191,7 +187,7 @@ def send_telegram_media(caption, image_path):
 
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/{method}"
         data = {"chat_id": TELEGRAM_CHAT_ID}
-        
+
         if has_caption:
             data["caption"] = caption
             data["parse_mode"] = "Markdown"
@@ -200,8 +196,7 @@ def send_telegram_media(caption, image_path):
             files = {file_key: f}
             resp = requests.post(url, data=data, files=files, timeout=30)
             resp.raise_for_status()
-        
-        # Se enviámos um sticker (sem legenda), enviamos o texto logo a seguir
+
         if not has_caption:
             send_message_text(caption)
 
@@ -210,6 +205,7 @@ def send_telegram_media(caption, image_path):
         send_message_text(caption)
 
 def send_message_text(msg):
+    """Envia uma mensagem de texto simples para o chat Telegram configurado."""
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID: return
     try:
         requests.post(
@@ -223,6 +219,7 @@ def send_message_text(msg):
 # --- Jobs ---
 
 def job_forecast():
+    """Obtém a previsão diária do IPMA, formata e envia via Telegram (com imagem se existir)."""
     logging.info(f"A processar previsão diária...")
     try:
         resp = requests.get(f"{FORECAST_BASE}{CITY_ID}.json", timeout=15)
@@ -231,8 +228,7 @@ def job_forecast():
 
         weather_map = load_weather_types()
         weather_desc = weather_map.get(int(forecast['idWeatherType']), str(forecast['idWeatherType']))
-        
-        # Otimização: Resolvemos a descrição do vento uma vez
+
         wind_code = forecast['classWindSpeed']
         wind_desc = resolve_wind_desc(wind_code)
 
@@ -253,7 +249,8 @@ def job_forecast():
             f"🌡️ Min: {forecast['tMin']}ºC | Max: {forecast['tMax']}ºC\n"
             f"☔ Previsão de chuva: {forecast['precipitaProb']}%\n"
             f"💨 Vento de {get_wind_dir_desc(forecast['predWindDir'])} - {wind_desc}\n"
-            f"🌍 Fonte: [ipma.pt](https://www.ipma.pt/pt/otempo/prev.localidade.hora/#Porto&Pa%C3%A7os%20de%20Ferreira)"
+            f"\n"
+            f"🌍 Fonte: [ipma.pt](https://www.ipma.pt/pt/otempo/prev.localidade.hora/)"
         )
 
         if image_path:
@@ -267,6 +264,7 @@ def job_forecast():
         logging.error(f"Erro no job forecast: {e}")
 
 def job_warnings():
+    """Consulta avisos meteorológicos para a área alvo e envia novos alertas via Telegram."""
     logging.info(f"A verificar avisos...")
     try:
         if not WARNINGS_URL: return
@@ -307,7 +305,8 @@ def job_warnings():
                     f"{pretty_awareness}\n"
                     f"🕒 {pretty_start} até {pretty_end}\n"
                     f"📝 {w['text']}\n"
-                    f"🌍 Fonte: [ipma.pt](https://www.ipma.pt/pt/otempo/prev-sam/"
+                    f"\n"
+                    f"🌍 Fonte: [ipma.pt](https://www.ipma.pt/pt/otempo/prev-sam/)"
                 )
                 send_message_text(msg)
                 sent_warnings_cache.add(w_id)
