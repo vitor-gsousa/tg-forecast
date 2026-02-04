@@ -1,9 +1,11 @@
 import os
 import time
-import requests
-import schedule
 import logging
 from datetime import datetime
+from typing import Any, Dict, Optional
+
+import requests
+import schedule
 from dotenv import load_dotenv
 
 logging.basicConfig(
@@ -20,22 +22,21 @@ DISTRICTS = os.getenv("DISTRICTS_URL")
 WEATHER_TYPES = os.getenv("WEATHER_TYPES_URL")
 WIND_TYPES = os.getenv("WIND_TYPES_URL")
 CITY_ID = os.getenv("IPMA_CITY_ID")
-AREA_ID = os.getenv("TARGET_AREA_ID")
+AREA_ID = os.getenv("TARGET_AREA_ID") or ""
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL_MINUTES", 60))
-FORECAST_TIME = os.getenv("FORECAST_TIME", "08:00")
+FORECAST_TIME = os.getenv("FORECAST_TIME", "20:30")
 TELEGRAM_TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("CHAT_ID")
 
 IMAGES_DIR = "images"
 
-# Caches
-sent_warnings_cache = set()
-location_name_cache = None
-weather_types_cache = None
-wind_types_cache = None
+# Caches em memória para reduzir chamadas externas repetidas
+sent_warnings_cache: set[str] = set()
+location_name_cache: str = ""
+weather_types_cache: Optional[Dict[int, str]] = None
+wind_types_cache: Optional[Dict[int, str]] = None
 
-# Dicionário Weather Types
-# Fallback local caso o endpoint de tipos não responda
+# Tipos de tempo: fallback local caso o endpoint falhe
 WEATHER_TYPES_FALLBACK = {
     0: "Sem informação", 1: "Céu limpo", 2: "Céu pouco nublado",
     3: "Céu parcialmente nublado", 4: "Céu muito nublado ou encoberto",
@@ -66,12 +67,19 @@ WIND_DIR_PT = {
 
 # --- Funções Auxiliares ---
 
-def get_location_name():
-    """Resolve e faz cache do nome amigável da área alvo a partir do endpoint de distritos."""
+def get_location_name() -> str:
+    """Resolve e cacheia o nome amigável da área alvo.
+
+    Returns:
+        str: Nome do distrito/área se resolvido; caso contrário devolve `AREA_ID`.
+    """
     global location_name_cache
-    if location_name_cache: return location_name_cache
+    if location_name_cache:
+        return location_name_cache
     try:
-        if not DISTRICTS: return AREA_ID
+        if not DISTRICTS:
+            location_name_cache = AREA_ID
+            return AREA_ID
         data = requests.get(DISTRICTS, timeout=10).json()
         for item in data['data']:
             if item['idAreaAviso'] == AREA_ID:
@@ -79,11 +87,16 @@ def get_location_name():
                 return location_name_cache
         location_name_cache = AREA_ID
         return AREA_ID
-    except:
+    except Exception:
+        location_name_cache = AREA_ID
         return AREA_ID
 
-def load_weather_types():
-    """Carrega os tipos de tempo da API (descWeatherTypePT), com cache e fallback local."""
+def load_weather_types() -> Dict[int, str]:
+    """Carrega tipos de tempo do IPMA com cache e fallback.
+
+    Returns:
+        Dict[int, str]: Mapa id→descrição PT de condições meteorológicas.
+    """
     global weather_types_cache
     if weather_types_cache is not None:
         return weather_types_cache
@@ -104,8 +117,12 @@ def load_weather_types():
 
     return weather_types_cache
 
-def load_wind_types():
-    """Carrega classes de vento da API (descClassWindSpeedDailyPT), com cache e fallback no próprio código."""
+def load_wind_types() -> Dict[int, str]:
+    """Carrega classes de vento do IPMA com cache e fallback interno.
+
+    Returns:
+        Dict[int, str]: Mapa classe de vento→descrição PT.
+    """
     global wind_types_cache
     if wind_types_cache is not None:
         return wind_types_cache
@@ -130,8 +147,15 @@ def load_wind_types():
 
     return wind_types_cache
 
-def resolve_wind_desc(raw_code):
-    """Normaliza o código de vento (string/int) e devolve descrição PT se existir."""
+def resolve_wind_desc(raw_code: Any) -> str:
+    """Normaliza código de vento e devolve descrição PT.
+
+    Args:
+        raw_code: Código recebido (string/int) do IPMA.
+
+    Returns:
+        str: Descrição PT se existir; caso contrário o próprio código.
+    """
     wind_map = load_wind_types()
     try:
         code_int = int(str(raw_code).strip())
@@ -139,16 +163,27 @@ def resolve_wind_desc(raw_code):
     except Exception:
         return str(raw_code)
 
-def get_wind_dir_desc(dir_code):
-    """Converte abreviaturas de direção de vento (N, NE, ...) para nomes completos em PT."""
+def get_wind_dir_desc(dir_code: str) -> str:
+    """Expande abreviaturas de direção de vento para nomes completos.
+
+    Args:
+        dir_code: Abreviatura cardinal (ex.: ``NE``).
+
+    Returns:
+        str: Descrição por extenso ou o código original.
+    """
     return WIND_DIR_PT.get(dir_code, dir_code)
 
-def get_local_image_path(weather_id):
-    """
-    Constrói o caminho da imagem dia usando o padrão w_ic_d_<id>.(tgs|png)
-    - Se id < 10: w_ic_d_0{id}.tgs/.png
-    - Caso contrário: w_ic_d_{id}.tgs/.png
-    Dá prioridade a .tgs se existir, senão usa .png.
+def get_local_image_path(weather_id: int) -> Optional[str]:
+    """Obtém caminho local da imagem correspondente ao ``weather_id``.
+
+    Prioriza ficheiros ``.tgs`` e faz fallback para ``.png``.
+
+    Args:
+        weather_id: Identificador de condição meteorológica IPMA.
+
+    Returns:
+        Optional[str]: Caminho absoluto relativo à pasta de imagens ou ``None`` se não existir.
     """
     wid = int(weather_id)
     if wid < 10:
@@ -156,26 +191,26 @@ def get_local_image_path(weather_id):
     else:
         base = f"w_ic_d_{wid}"
 
-    # Primeiro tenta .tgs
+    # Prefere sticker animado se existir .tgs
     tgs_path = os.path.join(IMAGES_DIR, base + ".tgs")
     if os.path.exists(tgs_path):
         return tgs_path
 
-    # Fallback para .png
+    # Caso não exista .tgs usa .png
     png_path = os.path.join(IMAGES_DIR, base + ".png")
     if os.path.exists(png_path):
         return png_path
 
     return None
 
-def send_telegram_media(caption, image_path):
-    """Envia media para o Telegram, escolhendo sticker para .tgs ou foto para restantes formatos."""
+def send_telegram_media(caption: str, image_path: str) -> None:
+    """Envia media para o Telegram, usando sticker para ``.tgs`` ou foto caso contrário."""
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID: return
 
     try:
         ext = os.path.splitext(image_path)[1].lower()
-        
-        # Determina o endpoint baseados na extensão
+
+        # Escolhe endpoint conforme a extensão (.tgs → sticker, resto → foto)
         if ext == '.tgs':
             method = "sendSticker"
             file_key = "sticker"
@@ -204,7 +239,7 @@ def send_telegram_media(caption, image_path):
         logging.error(f"Erro ao enviar media ({image_path}): {e}")
         send_message_text(caption)
 
-def send_message_text(msg):
+def send_message_text(msg: str) -> None:
     """Envia uma mensagem de texto simples para o chat Telegram configurado."""
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID: return
     try:
@@ -218,8 +253,8 @@ def send_message_text(msg):
 
 # --- Jobs ---
 
-def job_forecast():
-    """Obtém a previsão diária do IPMA, formata e envia via Telegram (com imagem se existir)."""
+def job_forecast() -> None:
+    """Obtém previsão diária do IPMA, formata e envia via Telegram (com imagem se existir)."""
     logging.info(f"A processar previsão diária...")
     try:
         resp = requests.get(f"{FORECAST_BASE}{CITY_ID}.json", timeout=15)
@@ -254,7 +289,7 @@ def job_forecast():
         )
 
         if image_path:
-            send_telegram_media(caption, image_path) # FIX: Usar a nova função
+            send_telegram_media(caption, image_path) # Usa helper que decide sticker/foto
             logging.info(f"Previsão enviada com imagem: {image_path}")
         else:
             send_message_text(caption)
@@ -263,7 +298,7 @@ def job_forecast():
     except Exception as e:
         logging.error(f"Erro no job forecast: {e}")
 
-def job_warnings():
+def job_warnings() -> None:
     """Consulta avisos meteorológicos para a área alvo e envia novos alertas via Telegram."""
     logging.info(f"A verificar avisos...")
     try:
