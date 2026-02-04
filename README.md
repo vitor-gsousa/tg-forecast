@@ -67,6 +67,34 @@ docker compose up --build
 - `images/`: stickers e imagens mapeadas para `idWeatherType` e avisos IPMA.
 - `requirements.txt`: dependencias Python.
 
+## Fluxo
+
+```mermaid
+flowchart TD
+    start([Start]) --> checkEnv{Variaveis env definidas?}
+    checkEnv -->|nao| stop([Erro: falta configuracao])
+    checkEnv -->|sim| loadCache[Carrega caches de tipos]
+    loadCache --> sched[Agenda jobs com schedule]
+    sched --> loop[[Loop: run_pending]]
+    loop --> warningsJob{Job avisos}
+    loop --> forecastJob{Job previsao diaria}
+
+    warningsJob --> fetchWarn[Busca avisos IPMA]
+    fetchWarn --> filterWarn[Filtra AREA_ID e nao green]
+    filterWarn --> dedup{Ja enviado?}
+    dedup -->|sim| loop
+    dedup -->|nao| sendWarn[Envia Telegram texto/sticker]
+    sendWarn --> loop
+
+    forecastJob --> fetchFcst[Busca previsao IPMA]
+    fetchFcst --> formatFcst[Formata legenda]
+    formatFcst --> chooseMedia{Tem media local?}
+    chooseMedia -->|sim| sendMedia[Envia foto/sticker]
+    chooseMedia -->|nao| sendText[Envia texto]
+    sendMedia --> loop
+    sendText --> loop
+```
+
 ## Contribuir
 
 1. Crie uma branch a partir de `main`.
