@@ -389,10 +389,6 @@ if __name__ == "__main__":
         exit()
 
     get_location_name()
-    job_forecast() # Teste
-    logging.info("Testes previsões meteo executados.")
-    job_warnings() # Teste
-    logging.info("Testes avisos executados.")
 
     schedule.every(CHECK_INTERVAL).minutes.do(job_warnings)
     schedule.every().day.at(FORECAST_TIME).do(job_forecast)
