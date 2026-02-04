@@ -356,10 +356,12 @@ def job_warnings() -> None:
                     pretty_awareness = w['awarenessLevelID'].capitalize()
 
                 msg = (
-                    f"⚠️ *AVISO IPMA: {location_name}*\n"
-                    f"👉 Tipo: {w['awarenessTypeName']}\n"
+                    f"⚠️ *AVISO IPMA:*\n"
+                    f"📍 Região: *{location_name}*\n"
+                    f"🔔 {w['awarenessTypeName']}\n"
                     f"{pretty_awareness}\n"
                     f"🕒 {pretty_start} até {pretty_end}\n"
+                    f"\n"
                     f"📝 {w['text']}\n"
                     f"\n"
                     f"🌍 Fonte: [ipma.pt](https://www.ipma.pt/pt/otempo/prev-sam/)"
