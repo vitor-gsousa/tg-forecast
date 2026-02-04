@@ -21,7 +21,7 @@ FORECAST_BASE = os.getenv("IPMA_FORECAST_BASE")
 DISTRICTS = os.getenv("DISTRICTS_URL")
 WEATHER_TYPES = os.getenv("WEATHER_TYPES_URL")
 WIND_TYPES = os.getenv("WIND_TYPES_URL")
-CITY_ID = os.getenv("IPMA_CITY_ID")
+GLOBAL_ID = os.getenv("IPMA_GLOBAL_ID")
 AREA_ID = os.getenv("TARGET_AREA_ID") or ""
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL_MINUTES", 60))
 FORECAST_TIME = os.getenv("FORECAST_TIME", "20:30")
@@ -277,7 +277,7 @@ def job_forecast() -> None:
     """Obtém previsão diária do IPMA, formata e envia via Telegram (com imagem se existir)."""
     logging.info(f"A processar previsão diária...")
     try:
-        resp = requests.get(f"{FORECAST_BASE}{CITY_ID}.json", timeout=15)
+        resp = requests.get(f"{FORECAST_BASE}{GLOBAL_ID}.json", timeout=15)
         resp.raise_for_status()
         forecast = resp.json()['data'][1]
 
@@ -306,7 +306,7 @@ def job_forecast() -> None:
             f"☔ Previsão de chuva: {forecast['precipitaProb']}%\n"
             f"💨 Vento de {get_wind_dir_desc(forecast['predWindDir'])} - {wind_desc}\n"
             f"\n"
-            f"🌍 Fonte: [ipma.pt](https://www.ipma.pt/pt/otempo/prev.localidade.hora/)"
+            f"🌍 Fonte: [ipma.pt](https://www.ipma.pt/pt/otempo/prev.localidade.hora/#{location_name}&{location_name})"
         )
 
         if image_path:
@@ -365,7 +365,7 @@ def job_warnings() -> None:
                     f"\n"
                     f"📝 {w['text']}\n"
                     f"\n"
-                    f"🌍 Fonte: [ipma.pt](https://www.ipma.pt/pt/otempo/prev-sam/)"
+                    f"🌍 Fonte: [ipma.pt](https://www.ipma.pt/pt/otempo/prev-sam/?p={AREA_ID})"
                 )
                 sticker_path = get_warning_sticker_path(w['awarenessTypeName'])
                 if sticker_path:
