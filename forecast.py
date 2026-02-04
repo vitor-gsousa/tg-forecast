@@ -65,6 +65,18 @@ WIND_DIR_PT = {
     "NW": "Noroeste",
 }
 
+# Mapeamento de avisos IPMA para stickers dedicados
+WARNING_STICKERS = {
+    "Agitação Marítima": "coastalevent.tgs",
+    "Nevoeiro": "fog.tgs",
+    "Tempo Quente": "high-temperature.tgs",
+    "Tempo Frio": "low-temperature.tgs",
+    "Precipitação": "rain.tgs",
+    "Neve": "snow-ice.tgs",
+    "Trovoada": "thunderstorm.tgs",
+    "Vento": "wind.tgs",
+}
+
 # --- Funções Auxiliares ---
 
 def get_location_name() -> str:
@@ -203,6 +215,14 @@ def get_local_image_path(weather_id: int) -> Optional[str]:
 
     return None
 
+def get_warning_sticker_path(awareness_type: str) -> Optional[str]:
+    """Devolve o caminho do sticker associado ao tipo de aviso, se existir localmente."""
+    filename = WARNING_STICKERS.get(awareness_type)
+    if not filename:
+        return None
+    path = os.path.join(IMAGES_DIR, filename)
+    return path if os.path.exists(path) else None
+
 def send_telegram_media(caption: str, image_path: str) -> None:
     """Envia media para o Telegram, usando sticker para ``.tgs`` ou foto caso contrário."""
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID: return
@@ -279,7 +299,8 @@ def job_forecast() -> None:
         caption = (
             f"👀 *Previsão do tempo para amanhã:*\n"
             f"📅 *{pretty_date}*\n"
-            f"📍 {location_name}\n"
+            f"\n"
+            f"📍 Região: *{location_name}*\n"
             f"🌤️ {weather_desc}\n"
             f"🌡️ Min: {forecast['tMin']}ºC | Max: {forecast['tMax']}ºC\n"
             f"☔ Previsão de chuva: {forecast['precipitaProb']}%\n"
@@ -343,7 +364,11 @@ def job_warnings() -> None:
                     f"\n"
                     f"🌍 Fonte: [ipma.pt](https://www.ipma.pt/pt/otempo/prev-sam/)"
                 )
-                send_message_text(msg)
+                sticker_path = get_warning_sticker_path(w['awarenessTypeName'])
+                if sticker_path:
+                    send_telegram_media(msg, sticker_path)
+                else:
+                    send_message_text(msg)
                 sent_warnings_cache.add(w_id)
                 logging.info(f"Aviso enviado: {w_id}")
             else:
