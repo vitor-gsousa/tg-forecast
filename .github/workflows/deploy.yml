@@ -1,0 +1,20 @@
+name: Deploy Microserviço TG-Forecast
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Executar Deploy
+    runs-on: self-hosted
+    
+    steps:
+      - name: Atualizar Produção
+        run: |
+          cd ~/tg-forecast
+          git pull origin main
+          docker compose pull
+          docker compose up -d
+          docker image prune -f
