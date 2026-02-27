@@ -381,7 +381,7 @@ def job_warnings() -> None:
 
 # --- Main ---
 
-if __name__ == "__main__"::
+if __name__ == "__main__":
     logging.info("Bot Iniciado.")
 
     if not os.path.exists(IMAGES_DIR):
