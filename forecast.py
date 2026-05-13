@@ -84,14 +84,29 @@ WARNING_STICKERS = {
 
 # --- Funções Auxiliares ---
 
+def ensure_warnings_cache_storage() -> bool:
+    """Garante que pasta e ficheiro de cache existem e estão prontos a usar."""
+    if not WARNINGS_CACHE_FILE:
+        return False
+
+    try:
+        cache_dir = os.path.dirname(WARNINGS_CACHE_FILE)
+        if cache_dir:
+            os.makedirs(cache_dir, exist_ok=True)
+
+        if not os.path.exists(WARNINGS_CACHE_FILE):
+            with open(WARNINGS_CACHE_FILE, 'w', encoding='utf-8') as f:
+                json.dump({}, f, ensure_ascii=False, indent=2)
+            logging.info(f"Ficheiro de cache criado: {WARNINGS_CACHE_FILE}")
+        return True
+    except Exception as e:
+        logging.error(f"Erro ao preparar storage de cache ({WARNINGS_CACHE_FILE}): {e}")
+        return False
+
 def load_sent_warnings_cache() -> None:
     """Carrega cache de avisos enviados a partir de JSON local."""
     global sent_warnings_cache
-    if not WARNINGS_CACHE_FILE:
-        return
-
-    if not os.path.exists(WARNINGS_CACHE_FILE):
-        logging.info(f"Ficheiro de cache não encontrado ({WARNINGS_CACHE_FILE}). A iniciar vazio.")
+    if not ensure_warnings_cache_storage():
         return
 
     try:
@@ -123,9 +138,11 @@ def load_sent_warnings_cache() -> None:
         else:
             logging.warning(f"Formato inválido em {WARNINGS_CACHE_FILE}. A iniciar cache vazio.")
             sent_warnings_cache = {}
+            save_sent_warnings_cache()
     except Exception as e:
         logging.error(f"Erro ao carregar cache de avisos ({WARNINGS_CACHE_FILE}): {e}")
         sent_warnings_cache = {}
+        save_sent_warnings_cache()
 
 
 def cleanup_sent_warnings_cache() -> int:
@@ -159,7 +176,7 @@ def get_warning_expiry_ts(end_time_raw: str) -> float:
 
 def save_sent_warnings_cache() -> None:
     """Persiste cache de avisos enviados em JSON local."""
-    if not WARNINGS_CACHE_FILE:
+    if not ensure_warnings_cache_storage():
         return
 
     try:
