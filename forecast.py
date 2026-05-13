@@ -1,7 +1,8 @@
 import os
 import time
 import logging
-from datetime import datetime
+import json
+from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 import requests
@@ -29,9 +30,13 @@ TELEGRAM_TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("CHAT_ID")
 
 IMAGES_DIR = "images"
+WARNINGS_CACHE_FILE = os.getenv("WARNINGS_CACHE_FILE", "sent_warnings_cache.json")
+WARNINGS_CACHE_RETENTION_HOURS = int(os.getenv("WARNINGS_CACHE_RETENTION_HOURS", 168))
+WARNING_EXPIRY_GRACE_HOURS = int(os.getenv("WARNING_EXPIRY_GRACE_HOURS", 6))
 
 # Caches em memória para reduzir chamadas externas repetidas
-sent_warnings_cache: set[str] = set()
+# id aviso -> timestamp Unix de expiração
+sent_warnings_cache: dict[str, float] = {}
 location_name_cache: str = ""
 weather_types_cache: Optional[Dict[int, str]] = None
 wind_types_cache: Optional[Dict[int, str]] = None
@@ -78,6 +83,93 @@ WARNING_STICKERS = {
 }
 
 # --- Funções Auxiliares ---
+
+def load_sent_warnings_cache() -> None:
+    """Carrega cache de avisos enviados a partir de JSON local."""
+    global sent_warnings_cache
+    if not WARNINGS_CACHE_FILE:
+        return
+
+    if not os.path.exists(WARNINGS_CACHE_FILE):
+        logging.info(f"Ficheiro de cache não encontrado ({WARNINGS_CACHE_FILE}). A iniciar vazio.")
+        return
+
+    try:
+        with open(WARNINGS_CACHE_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        if isinstance(data, dict):
+            parsed_cache: dict[str, float] = {}
+            for k, v in data.items():
+                try:
+                    parsed_cache[str(k)] = float(v)
+                except (TypeError, ValueError):
+                    continue
+            sent_warnings_cache = parsed_cache
+            removed = cleanup_sent_warnings_cache()
+            logging.info(
+                f"Cache de avisos carregado com {len(sent_warnings_cache)} entradas"
+                + (f" ({removed} expiradas removidas)." if removed else ".")
+            )
+        elif isinstance(data, list):
+            # Compatibilidade com formato antigo (lista de IDs sem expiração)
+            expiry = time.time() + WARNINGS_CACHE_RETENTION_HOURS * 3600
+            sent_warnings_cache = {str(item): expiry for item in data}
+            logging.info(
+                f"Cache legado carregado com {len(sent_warnings_cache)} entradas;"
+                f" convertido para formato com expiração ({WARNINGS_CACHE_RETENTION_HOURS}h)."
+            )
+            save_sent_warnings_cache()
+        else:
+            logging.warning(f"Formato inválido em {WARNINGS_CACHE_FILE}. A iniciar cache vazio.")
+            sent_warnings_cache = {}
+    except Exception as e:
+        logging.error(f"Erro ao carregar cache de avisos ({WARNINGS_CACHE_FILE}): {e}")
+        sent_warnings_cache = {}
+
+
+def cleanup_sent_warnings_cache() -> int:
+    """Remove entradas expiradas do cache e devolve quantas foram removidas."""
+    global sent_warnings_cache
+    now_ts = time.time()
+    before = len(sent_warnings_cache)
+    sent_warnings_cache = {k: v for k, v in sent_warnings_cache.items() if v > now_ts}
+    return before - len(sent_warnings_cache)
+
+
+def get_warning_expiry_ts(end_time_raw: str) -> float:
+    """Calcula expiração de um aviso com base no fim + período de graça."""
+    now_ts = time.time()
+    fallback_hours = max(WARNINGS_CACHE_RETENTION_HOURS, 1)
+    fallback_expiry = now_ts + fallback_hours * 3600
+    try:
+        end_time = datetime.strptime(end_time_raw, "%Y-%m-%dT%H:%M:%S")
+    except Exception:
+        return fallback_expiry
+
+    end_with_grace = end_time + timedelta(hours=WARNING_EXPIRY_GRACE_HOURS)
+    expiry_ts = end_with_grace.timestamp()
+
+    # Evita expiração imediata quando o fim do aviso já passou no momento do envio.
+    if expiry_ts <= now_ts:
+        grace_hours = max(WARNING_EXPIRY_GRACE_HOURS, 1)
+        return now_ts + grace_hours * 3600
+    return expiry_ts
+
+
+def save_sent_warnings_cache() -> None:
+    """Persiste cache de avisos enviados em JSON local."""
+    if not WARNINGS_CACHE_FILE:
+        return
+
+    try:
+        tmp_path = f"{WARNINGS_CACHE_FILE}.tmp"
+        serializable_cache = dict(sorted(sent_warnings_cache.items(), key=lambda item: item[0]))
+        with open(tmp_path, 'w', encoding='utf-8') as f:
+            json.dump(serializable_cache, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, WARNINGS_CACHE_FILE)
+    except Exception as e:
+        logging.error(f"Erro ao guardar cache de avisos ({WARNINGS_CACHE_FILE}): {e}")
 
 def get_location_name() -> str:
     """Resolve e cacheia o nome amigável da área alvo.
@@ -323,15 +415,23 @@ def job_warnings() -> None:
     """Consulta avisos meteorológicos para a área alvo e envia novos alertas via Telegram."""
     logging.info(f"A verificar avisos...")
     try:
+        removed = cleanup_sent_warnings_cache()
+        if removed:
+            logging.info(f"Limpeza de cache: removidas {removed} entradas expiradas.")
+
         if not WARNINGS_URL: return
         resp = requests.get(WARNINGS_URL, timeout=15)
         resp.raise_for_status()
         data = resp.json()
         relevant = [w for w in data if w['idAreaAviso'] == AREA_ID and w['awarenessLevelID'] != 'green']
 
-        if not relevant: return
+        if not relevant:
+            if removed:
+                save_sent_warnings_cache()
+            return
 
         location_name = get_location_name()
+        has_new_warning = False
         for w in relevant:
             w_id = f"{w['idAreaAviso']}_{w['awarenessTypeName']}_{w['startTime']}"
             if w_id not in sent_warnings_cache:
@@ -372,10 +472,14 @@ def job_warnings() -> None:
                     send_telegram_media(msg, sticker_path)
                 else:
                     send_message_text(msg)
-                sent_warnings_cache.add(w_id)
+                sent_warnings_cache[w_id] = get_warning_expiry_ts(w.get('endTime', ''))
+                has_new_warning = True
                 logging.info(f"Aviso enviado: {w_id}")
             else:
                 logging.info(f"Aviso já enviado: {w_id}")
+
+        if has_new_warning or removed:
+            save_sent_warnings_cache()
     except Exception as e:
         logging.error(f"Erro avisos: {e}")
 
@@ -389,6 +493,7 @@ if __name__ == "__main__":
         exit()
 
     get_location_name()
+    load_sent_warnings_cache()
 
     schedule.every(CHECK_INTERVAL).minutes.do(job_warnings)
     schedule.every().day.at(FORECAST_TIME).do(job_forecast)
