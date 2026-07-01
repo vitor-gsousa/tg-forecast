@@ -30,18 +30,23 @@ TELEGRAM_TOKEN = os.getenv("BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("CHAT_ID")
 
 IMAGES_DIR = "images"
-WARNINGS_CACHE_FILE = os.getenv("WARNINGS_CACHE_FILE", "sent_warnings_cache.json")
-WARNINGS_CACHE_RETENTION_HOURS = int(os.getenv("WARNINGS_CACHE_RETENTION_HOURS", 168))
+WARNINGS_CACHE_FILE = os.getenv(
+    "WARNINGS_CACHE_FILE",
+    "sent_warnings_cache.json"
+)
+WARNINGS_CACHE_RETENTION_HOURS = int(
+    os.getenv("WARNINGS_CACHE_RETENTION_HOURS", 168)
+)
 WARNING_EXPIRY_GRACE_HOURS = int(os.getenv("WARNING_EXPIRY_GRACE_HOURS", 6))
 
-# Caches em memória para reduzir chamadas externas repetidas
-# id aviso -> timestamp Unix de expiração
+# Cache em memória para reduzir chamadas externas repetidas.
+# Formato: id aviso -> timestamp Unix de expiração.
 sent_warnings_cache: dict[str, float] = {}
 location_name_cache: str = ""
 weather_types_cache: Optional[Dict[int, str]] = None
 wind_types_cache: Optional[Dict[int, str]] = None
 
-# Tipos de tempo: fallback local caso o endpoint falhe
+# Fallback local para tipos de tempo quando o endpoint falha.
 WEATHER_TYPES_FALLBACK = {
     0: "Sem informação", 1: "Céu limpo", 2: "Céu pouco nublado",
     3: "Céu parcialmente nublado", 4: "Céu muito nublado ou encoberto",
@@ -58,7 +63,7 @@ WEATHER_TYPES_FALLBACK = {
     29: "Chuva e Neve", 30: "Chuva e Neve", -99: "---"
 }
 
-# Conversão de direção do vento para PT
+# Conversão de direção do vento para PT.
 WIND_DIR_PT = {
     "N": "Norte",
     "NE": "Nordeste",
@@ -70,7 +75,7 @@ WIND_DIR_PT = {
     "NW": "Noroeste",
 }
 
-# Mapeamento de avisos IPMA para stickers dedicados
+# Mapeamento de avisos IPMA para stickers dedicados.
 WARNING_STICKERS = {
     "Agitação Marítima": "coastalevent.tgs",
     "Nevoeiro": "fog.tgs",
@@ -84,8 +89,14 @@ WARNING_STICKERS = {
 
 # --- Funções Auxiliares ---
 
+
 def ensure_warnings_cache_storage() -> bool:
-    """Garante que pasta e ficheiro de cache existem e estão prontos a usar."""
+    """Garante que o storage de cache local está pronto a usar.
+
+    Returns:
+        bool: ``True`` se a pasta/ficheiro de cache estiverem disponíveis;
+            ``False`` em caso de falha.
+    """
     if not WARNINGS_CACHE_FILE:
         return False
 
@@ -100,11 +111,18 @@ def ensure_warnings_cache_storage() -> bool:
             logging.info(f"Ficheiro de cache criado: {WARNINGS_CACHE_FILE}")
         return True
     except Exception as e:
-        logging.error(f"Erro ao preparar storage de cache ({WARNINGS_CACHE_FILE}): {e}")
+        logging.error(
+            f"Erro ao preparar storage de cache ({WARNINGS_CACHE_FILE}): {e}"
+        )
         return False
 
+
 def load_sent_warnings_cache() -> None:
-    """Carrega cache de avisos enviados a partir de JSON local."""
+    """Carrega o cache de avisos enviados a partir do JSON local.
+
+    Returns:
+        None: Atualiza o estado global ``sent_warnings_cache``.
+    """
     global sent_warnings_cache
     if not ensure_warnings_cache_storage():
         return
@@ -122,40 +140,66 @@ def load_sent_warnings_cache() -> None:
                     continue
             sent_warnings_cache = parsed_cache
             removed = cleanup_sent_warnings_cache()
-            logging.info(
-                f"Cache de avisos carregado com {len(sent_warnings_cache)} entradas"
-                + (f" ({removed} expiradas removidas)." if removed else ".")
+            msg = (
+                f"Cache de avisos carregado com {len(sent_warnings_cache)} "
+                "entradas"
             )
+            if removed:
+                msg += f" ({removed} expiradas removidas)."
+            else:
+                msg += "."
+            logging.info(msg)
         elif isinstance(data, list):
-            # Compatibilidade com formato antigo (lista de IDs sem expiração)
+            # Mantém compatibilidade com formato legado sem expiração.
             expiry = time.time() + WARNINGS_CACHE_RETENTION_HOURS * 3600
             sent_warnings_cache = {str(item): expiry for item in data}
             logging.info(
-                f"Cache legado carregado com {len(sent_warnings_cache)} entradas;"
-                f" convertido para formato com expiração ({WARNINGS_CACHE_RETENTION_HOURS}h)."
+                f"Cache legado carregado com {len(sent_warnings_cache)} "
+                f"entradas; convertido para formato com expiração "
+                f"({WARNINGS_CACHE_RETENTION_HOURS}h)."
             )
             save_sent_warnings_cache()
         else:
-            logging.warning(f"Formato inválido em {WARNINGS_CACHE_FILE}. A iniciar cache vazio.")
+            logging.warning(
+                f"Formato inválido em {WARNINGS_CACHE_FILE}. "
+                f"A iniciar cache vazio."
+            )
             sent_warnings_cache = {}
             save_sent_warnings_cache()
     except Exception as e:
-        logging.error(f"Erro ao carregar cache de avisos ({WARNINGS_CACHE_FILE}): {e}")
+        logging.error(
+            f"Erro ao carregar cache de avisos ({WARNINGS_CACHE_FILE}): {e}"
+        )
         sent_warnings_cache = {}
         save_sent_warnings_cache()
 
 
 def cleanup_sent_warnings_cache() -> int:
-    """Remove entradas expiradas do cache e devolve quantas foram removidas."""
+    """Remove entradas expiradas do cache de avisos.
+
+    Returns:
+        int: Quantidade de entradas removidas.
+    """
     global sent_warnings_cache
     now_ts = time.time()
     before = len(sent_warnings_cache)
-    sent_warnings_cache = {k: v for k, v in sent_warnings_cache.items() if v > now_ts}
+    sent_warnings_cache = {
+        k: v for k, v in sent_warnings_cache.items() if v > now_ts
+    }
     return before - len(sent_warnings_cache)
 
 
 def get_warning_expiry_ts(end_time_raw: str) -> float:
-    """Calcula expiração de um aviso com base no fim + período de graça."""
+    """Calcula o timestamp de expiração de um aviso.
+
+    Args:
+        end_time_raw: Data/hora de fim do aviso no formato
+            ``YYYY-MM-DDTHH:MM:SS``.
+
+    Returns:
+        float: Timestamp Unix da expiração (fim + período de graça), com
+            fallback para uma expiração segura quando o formato é inválido.
+    """
     now_ts = time.time()
     fallback_hours = max(WARNINGS_CACHE_RETENTION_HOURS, 1)
     fallback_expiry = now_ts + fallback_hours * 3600
@@ -167,7 +211,7 @@ def get_warning_expiry_ts(end_time_raw: str) -> float:
     end_with_grace = end_time + timedelta(hours=WARNING_EXPIRY_GRACE_HOURS)
     expiry_ts = end_with_grace.timestamp()
 
-    # Evita expiração imediata quando o fim do aviso já passou no momento do envio.
+    # Evita expiração imediata quando o fim do aviso já passou.
     if expiry_ts <= now_ts:
         grace_hours = max(WARNING_EXPIRY_GRACE_HOURS, 1)
         return now_ts + grace_hours * 3600
@@ -175,24 +219,34 @@ def get_warning_expiry_ts(end_time_raw: str) -> float:
 
 
 def save_sent_warnings_cache() -> None:
-    """Persiste cache de avisos enviados em JSON local."""
+    """Persiste o cache de avisos enviados em JSON local.
+
+    Returns:
+        None: Escreve o estado global ``sent_warnings_cache`` em disco.
+    """
     if not ensure_warnings_cache_storage():
         return
 
     try:
         tmp_path = f"{WARNINGS_CACHE_FILE}.tmp"
-        serializable_cache = dict(sorted(sent_warnings_cache.items(), key=lambda item: item[0]))
+        serializable_cache = dict(
+            sorted(sent_warnings_cache.items(), key=lambda item: item[0])
+        )
         with open(tmp_path, 'w', encoding='utf-8') as f:
             json.dump(serializable_cache, f, ensure_ascii=False, indent=2)
         os.replace(tmp_path, WARNINGS_CACHE_FILE)
     except Exception as e:
-        logging.error(f"Erro ao guardar cache de avisos ({WARNINGS_CACHE_FILE}): {e}")
+        logging.error(
+            f"Erro ao guardar cache de avisos ({WARNINGS_CACHE_FILE}): {e}"
+        )
+
 
 def get_location_name() -> str:
     """Resolve e cacheia o nome amigável da área alvo.
 
     Returns:
-        str: Nome do distrito/área se resolvido; caso contrário devolve `AREA_ID`.
+        str: Nome do distrito/área se resolvido; caso contrário devolve
+            `AREA_ID`.
     """
     global location_name_cache
     if location_name_cache:
@@ -212,6 +266,7 @@ def get_location_name() -> str:
         location_name_cache = AREA_ID
         return AREA_ID
 
+
 def load_weather_types() -> Dict[int, str]:
     """Carrega tipos de tempo do IPMA com cache e fallback.
 
@@ -230,13 +285,20 @@ def load_weather_types() -> Dict[int, str]:
         resp = requests.get(WEATHER_TYPES, timeout=10)
         resp.raise_for_status()
         data = resp.json().get("data", [])
-        mapping = {int(item["idWeatherType"]): item.get("descWeatherTypePT", f"Desconhecido ({item['idWeatherType']})") for item in data}
+        mapping = {
+            int(item["idWeatherType"]): item.get(
+                "descWeatherTypePT",
+                f"Desconhecido ({item['idWeatherType']})"
+            )
+            for item in data
+        }
         weather_types_cache = mapping if mapping else WEATHER_TYPES_FALLBACK
     except Exception as e:
         logging.error(f"Erro ao carregar weather types: {e}")
         weather_types_cache = WEATHER_TYPES_FALLBACK
 
     return weather_types_cache
+
 
 def load_wind_types() -> Dict[int, str]:
     """Carrega classes de vento do IPMA com cache e fallback interno.
@@ -256,9 +318,11 @@ def load_wind_types() -> Dict[int, str]:
         resp.raise_for_status()
         data = resp.json().get("data", [])
         wind_types_cache = {
-            int(item.get("classWindSpeed")): item.get("descClassWindSpeedDailyPT")
-            or item.get("descClassWindSpeedPT")
-            or str(item.get("classWindSpeed"))
+            int(item.get("classWindSpeed")): item.get(
+                "descClassWindSpeedDailyPT",
+                item.get("descClassWindSpeedPT"),
+                str(item.get("classWindSpeed"))
+            )
             for item in data
             if item.get("classWindSpeed") is not None
         }
@@ -267,6 +331,7 @@ def load_wind_types() -> Dict[int, str]:
         wind_types_cache = {}
 
     return wind_types_cache
+
 
 def resolve_wind_desc(raw_code: Any) -> str:
     """Normaliza código de vento e devolve descrição PT.
@@ -284,6 +349,7 @@ def resolve_wind_desc(raw_code: Any) -> str:
     except Exception:
         return str(raw_code)
 
+
 def get_wind_dir_desc(dir_code: str) -> str:
     """Expande abreviaturas de direção de vento para nomes completos.
 
@@ -295,6 +361,7 @@ def get_wind_dir_desc(dir_code: str) -> str:
     """
     return WIND_DIR_PT.get(dir_code, dir_code)
 
+
 def get_local_image_path(weather_id: int) -> Optional[str]:
     """Obtém caminho local da imagem correspondente ao ``weather_id``.
 
@@ -304,7 +371,8 @@ def get_local_image_path(weather_id: int) -> Optional[str]:
         weather_id: Identificador de condição meteorológica IPMA.
 
     Returns:
-        Optional[str]: Caminho absoluto relativo à pasta de imagens ou ``None`` se não existir.
+        Optional[str]: Caminho absoluto relativo à pasta de imagens ou
+            ``None`` se não existir.
     """
     wid = int(weather_id)
     if wid < 10:
@@ -312,38 +380,57 @@ def get_local_image_path(weather_id: int) -> Optional[str]:
     else:
         base = f"w_ic_d_{wid}"
 
-    # Prefere sticker animado se existir .tgs
     tgs_path = os.path.join(IMAGES_DIR, base + ".tgs")
     if os.path.exists(tgs_path):
         return tgs_path
 
-    # Caso não exista .tgs usa .png
     png_path = os.path.join(IMAGES_DIR, base + ".png")
     if os.path.exists(png_path):
         return png_path
 
     return None
 
+
 def get_warning_sticker_path(awareness_type: str) -> Optional[str]:
-    """Devolve o caminho do sticker associado ao tipo de aviso, se existir localmente."""
+    """Devolve o caminho do sticker associado ao tipo de aviso, se existir.
+
+    Args:
+        awareness_type: Tipo de aviso IPMA (ex.: "Trovoada", "Neve").
+
+    Returns:
+        Optional[str]: Caminho para o ficheiro do sticker na pasta de imagens,
+            ou ``None`` caso não exista mapeamento ou o ficheiro não exista.
+    """
     filename = WARNING_STICKERS.get(awareness_type)
     if not filename:
         return None
     path = os.path.join(IMAGES_DIR, filename)
     return path if os.path.exists(path) else None
 
+
 def send_telegram_media(caption: str, image_path: str) -> None:
-    """Envia media para o Telegram, usando sticker para ``.tgs`` ou foto caso contrário."""
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID: return
+    """Envia media para o Telegram.
+
+    Usa sticker para ficheiros ``.tgs`` e foto para os restantes formatos.
+
+    Args:
+        caption: Texto da mensagem a enviar (ou a reenviar como texto simples).
+        image_path: Caminho local do ficheiro de media.
+
+    Returns:
+        None: Envia media para o Telegram e, em fallback, envia texto.
+    """
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return
 
     try:
         ext = os.path.splitext(image_path)[1].lower()
 
-        # Escolhe endpoint conforme a extensão (.tgs → sticker, resto → foto)
+        # O endpoint determina se o envio será sticker (.tgs) ou foto.
         if ext == '.tgs':
             method = "sendSticker"
             file_key = "sticker"
-            has_caption = False # Stickers não têm legenda
+            has_caption = False
         else:
             method = "sendPhoto"
             file_key = "photo"
@@ -368,13 +455,26 @@ def send_telegram_media(caption: str, image_path: str) -> None:
         logging.error(f"Erro ao enviar media ({image_path}): {e}")
         send_message_text(caption)
 
+
 def send_message_text(msg: str) -> None:
-    """Envia uma mensagem de texto simples para o chat Telegram configurado."""
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID: return
+    """Envia uma mensagem de texto simples para o Telegram.
+
+    Args:
+        msg: Conteúdo textual da mensagem em Markdown.
+
+    Returns:
+        None: Envia a mensagem para o chat configurado.
+    """
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return
     try:
         requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-            json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "Markdown"},
+            json={
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": msg,
+                "parse_mode": "Markdown"
+            },
             timeout=10
         )
     except Exception as e:
@@ -382,16 +482,26 @@ def send_message_text(msg: str) -> None:
 
 # --- Jobs ---
 
+
 def job_forecast() -> None:
-    """Obtém previsão diária do IPMA, formata e envia via Telegram (com imagem se existir)."""
-    logging.info(f"A processar previsão diária...")
+    """Obtém previsão diária do IPMA e envia via Telegram.
+
+    Envia com imagem quando existir um ficheiro local correspondente.
+
+    Returns:
+        None: Executa o envio da previsão diária para o chat configurado.
+    """
+    logging.info("A processar previsão diária...")
     try:
         resp = requests.get(f"{FORECAST_BASE}{GLOBAL_ID}.json", timeout=15)
         resp.raise_for_status()
         forecast = resp.json()['data'][1]
 
         weather_map = load_weather_types()
-        weather_desc = weather_map.get(int(forecast['idWeatherType']), str(forecast['idWeatherType']))
+        weather_desc = weather_map.get(
+            int(forecast['idWeatherType']),
+            str(forecast['idWeatherType'])
+        )
 
         wind_code = forecast['classWindSpeed']
         wind_desc = resolve_wind_desc(wind_code)
@@ -399,8 +509,11 @@ def job_forecast() -> None:
         location_name = get_location_name()
 
         try:
-            pretty_date = datetime.strptime(forecast['forecastDate'], "%Y-%m-%d").strftime("%d-%m-%Y")
-        except:
+            pretty_date = datetime.strptime(
+                forecast['forecastDate'],
+                "%Y-%m-%d"
+            ).strftime("%d-%m-%Y")
+        except Exception:
             pretty_date = forecast['forecastDate']
 
         image_path = get_local_image_path(forecast['idWeatherType'])
@@ -413,34 +526,48 @@ def job_forecast() -> None:
             f"🌤️ {weather_desc}\n"
             f"🌡️ Min: {forecast['tMin']}ºC | Max: {forecast['tMax']}ºC\n"
             f"☔ Previsão de chuva: {forecast['precipitaProb']}%\n"
-            f"💨 Vento de {get_wind_dir_desc(forecast['predWindDir'])} - {wind_desc}\n"
+            f"💨 Vento de {get_wind_dir_desc(forecast['predWindDir'])} - "
+            f"{wind_desc}\n"
             f"\n"
-            f"🌍 Fonte: [ipma.pt](https://www.ipma.pt/pt/otempo/prev.localidade.hora/#{location_name}&{location_name})"
+            f"🌍 Fonte: [ipma.pt](https://www.ipma.pt/pt/otempo/"
+            f"prev.localidade.hora/#{location_name}&{location_name})"
         )
 
         if image_path:
-            send_telegram_media(caption, image_path) # Usa helper que decide sticker/foto
+            send_telegram_media(caption, image_path)
             logging.info(f"Previsão enviada com imagem: {image_path}")
         else:
             send_message_text(caption)
-            logging.info(f"Previsão enviada sem imagem.")
+            logging.info("Previsão enviada sem imagem.")
 
     except Exception as e:
         logging.error(f"Erro no job forecast: {e}")
 
+
 def job_warnings() -> None:
-    """Consulta avisos meteorológicos para a área alvo e envia novos alertas via Telegram."""
-    logging.info(f"A verificar avisos...")
+    """Consulta avisos meteorológicos e envia novos alertas.
+
+    Returns:
+        None: Envia apenas avisos novos para o chat configurado e atualiza
+            o cache local de avisos enviados.
+    """
+    logging.info("A verificar avisos...")
     try:
         removed = cleanup_sent_warnings_cache()
         if removed:
-            logging.info(f"Limpeza de cache: removidas {removed} entradas expiradas.")
+            logging.info(
+                f"Limpeza de cache: removidas {removed} entradas expiradas."
+            )
 
-        if not WARNINGS_URL: return
+        if not WARNINGS_URL:
+            return
         resp = requests.get(WARNINGS_URL, timeout=15)
         resp.raise_for_status()
         data = resp.json()
-        relevant = [w for w in data if w['idAreaAviso'] == AREA_ID and w['awarenessLevelID'] != 'green']
+        relevant = [
+            w for w in data
+            if w['idAreaAviso'] == AREA_ID and w['awarenessLevelID'] != 'green'
+        ]
 
         if not relevant:
             if removed:
@@ -450,15 +577,24 @@ def job_warnings() -> None:
         location_name = get_location_name()
         has_new_warning = False
         for w in relevant:
-            w_id = f"{w['idAreaAviso']}_{w['awarenessTypeName']}_{w['startTime']}"
+            w_id = (
+                f"{w['idAreaAviso']}_{w['awarenessTypeName']}_"
+                f"{w['startTime']}"
+            )
             if w_id not in sent_warnings_cache:
                 try:
-                    pretty_start = datetime.strptime(w['startTime'], "%Y-%m-%dT%H:%M:%S").strftime("%H:%M %d-%m-%Y")
+                    pretty_start = datetime.strptime(
+                        w['startTime'],
+                        "%Y-%m-%dT%H:%M:%S"
+                    ).strftime("%H:%M %d-%m-%Y")
                 except Exception:
                     pretty_start = w['startTime'].replace("T", " ")
 
                 try:
-                    pretty_end = datetime.strptime(w['endTime'], "%Y-%m-%dT%H:%M:%S").strftime("%H:%M %d-%m-%Y")
+                    pretty_end = datetime.strptime(
+                        w['endTime'],
+                        "%Y-%m-%dT%H:%M:%S"
+                    ).strftime("%H:%M %d-%m-%Y")
                 except Exception:
                     pretty_end = w['endTime'].replace("T", " ")
 
@@ -482,14 +618,17 @@ def job_warnings() -> None:
                     f"\n"
                     f"📝 {w['text']}\n"
                     f"\n"
-                    f"🌍 Fonte: [ipma.pt](https://www.ipma.pt/pt/otempo/prev-sam/?p={AREA_ID})"
+                    f"🌍 Fonte: [ipma.pt](https://www.ipma.pt/pt/otempo/"
+                    f"prev-sam/?p={AREA_ID})"
                 )
                 sticker_path = get_warning_sticker_path(w['awarenessTypeName'])
                 if sticker_path:
                     send_telegram_media(msg, sticker_path)
                 else:
                     send_message_text(msg)
-                sent_warnings_cache[w_id] = get_warning_expiry_ts(w.get('endTime', ''))
+                sent_warnings_cache[w_id] = get_warning_expiry_ts(
+                    w.get('endTime', '')
+                )
                 has_new_warning = True
                 logging.info(f"Aviso enviado: {w_id}")
             else:
@@ -501,6 +640,7 @@ def job_warnings() -> None:
         logging.error(f"Erro avisos: {e}")
 
 # --- Main ---
+
 
 if __name__ == "__main__":
     logging.info("Bot Iniciado.")
