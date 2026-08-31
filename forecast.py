@@ -577,9 +577,10 @@ def job_warnings() -> None:
         location_name = get_location_name()
         has_new_warning = False
         for w in relevant:
+            start_date = w['startTime'].split('T')[0]
             w_id = (
                 f"{w['idAreaAviso']}_{w['awarenessTypeName']}_"
-                f"{w['startTime']}"
+                f"{start_date}"
             )
             if w_id not in sent_warnings_cache:
                 try:
