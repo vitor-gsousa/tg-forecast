@@ -496,7 +496,15 @@ def job_forecast() -> None:
     try:
         resp = requests.get(f"{FORECAST_BASE}{GLOBAL_ID}.json", timeout=15)
         resp.raise_for_status()
-        forecast = resp.json()['data'][1]
+        forecast_data = resp.json().get('data', [])
+        if len(forecast_data) > 1:
+            forecast = forecast_data[1]
+        elif len(forecast_data) == 1:
+            logging.warning("Previsão para amanhã indisponível. A usar a previsão de hoje.")
+            forecast = forecast_data[0]
+        else:
+            logging.warning("Sem dados de previsão disponíveis na resposta da API.")
+            return
 
         weather_map = load_weather_types()
         weather_desc = weather_map.get(
