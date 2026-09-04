@@ -581,7 +581,7 @@ def job_warnings() -> None:
             start_date = w['startTime'].split('T')[0]
             w_id = (
                 f"{w['idAreaAviso']}_{w['awarenessTypeName']}_"
-                f"{start_date}"
+                f"{w['awarenessLevelID']}_{start_date}"
             )
             if w_id not in sent_warnings_cache:
                 try:
