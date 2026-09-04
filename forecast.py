@@ -78,14 +78,14 @@ WIND_DIR_PT = {
 
 # Mapeamento de avisos IPMA para stickers dedicados.
 WARNING_STICKERS = {
-    "Agitação Marítima": "coastalevent.tgs",
-    "Nevoeiro": "fog.tgs",
-    "Tempo Quente": "high-temperature.tgs",
-    "Tempo Frio": "low-temperature.tgs",
-    "Precipitação": "rain.tgs",
-    "Neve": "snow-ice.tgs",
-    "Trovoada": "thunderstorm.tgs",
-    "Vento": "wind.tgs",
+    "Agitação Marítima": "coastalevent",
+    "Nevoeiro": "fog",
+    "Tempo Quente": "high-temperature",
+    "Tempo Frio": "low-temperature",
+    "Precipitação": "rain",
+    "Neve": "snow-ice",
+    "Trovoada": "thunderstorm",
+    "Vento": "wind",
 }
 
 # --- Funções Auxiliares ---
@@ -402,11 +402,19 @@ def get_warning_sticker_path(awareness_type: str) -> Optional[str]:
         Optional[str]: Caminho para o ficheiro do sticker na pasta de imagens,
             ou ``None`` caso não exista mapeamento ou o ficheiro não exista.
     """
-    filename = WARNING_STICKERS.get(awareness_type)
-    if not filename:
+    base_filename = WARNING_STICKERS.get(awareness_type)
+    if not base_filename:
         return None
-    path = os.path.join(IMAGES_DIR, filename)
-    return path if os.path.exists(path) else None
+
+    tgs_path = os.path.join(IMAGES_DIR, base_filename + ".tgs")
+    if os.path.exists(tgs_path):
+        return tgs_path
+
+    png_path = os.path.join(IMAGES_DIR, base_filename + ".png")
+    if os.path.exists(png_path):
+        return png_path
+
+    return None
 
 
 def send_telegram_media(caption: str, image_path: str) -> None:
@@ -507,25 +515,26 @@ def job_forecast() -> None:
             return
 
         weather_map = load_weather_types()
+        id_weather = forecast.get('idWeatherType', -99)
         weather_desc = weather_map.get(
-            int(forecast['idWeatherType']),
-            str(forecast['idWeatherType'])
+            int(id_weather),
+            str(id_weather)
         )
 
-        wind_code = forecast['classWindSpeed']
+        wind_code = forecast.get('classWindSpeed', -99)
         wind_desc = resolve_wind_desc(wind_code)
 
         location_name = get_location_name()
 
         try:
             pretty_date = datetime.strptime(
-                forecast['forecastDate'],
+                forecast.get('forecastDate', ''),
                 "%Y-%m-%d"
             ).strftime("%d-%m-%Y")
         except Exception:
-            pretty_date = forecast['forecastDate']
+            pretty_date = forecast.get('forecastDate', 'N/D')
 
-        image_path = get_local_image_path(forecast['idWeatherType'])
+        image_path = get_local_image_path(forecast.get('idWeatherType', 0))
 
         caption = (
             f"👀 <b>Previsão do tempo para amanhã:</b>\n"
@@ -533,9 +542,9 @@ def job_forecast() -> None:
             f"\n"
             f"📍 Região: <b>{html.escape(str(location_name))}</b>\n"
             f"🌤️ {html.escape(str(weather_desc))}\n"
-            f"🌡️ Min: {html.escape(str(forecast['tMin']))}ºC | Max: {html.escape(str(forecast['tMax']))}ºC\n"
-            f"☔ Previsão de chuva: {html.escape(str(forecast['precipitaProb']))}%\n"
-            f"💨 Vento de {html.escape(str(get_wind_dir_desc(forecast['predWindDir'])))} - "
+            f"🌡️ Min: {html.escape(str(forecast.get('tMin', 'N/D')))}ºC | Max: {html.escape(str(forecast.get('tMax', 'N/D')))}ºC\n"
+            f"☔ Previsão de chuva: {html.escape(str(forecast.get('precipitaProb', 'N/D')))}%\n"
+            f"💨 Vento de {html.escape(str(get_wind_dir_desc(forecast.get('predWindDir', 'N/D'))))} - "
             f"{html.escape(str(wind_desc))}\n"
             f"\n"
             f"🌍 Fonte: <a href=\"https://www.ipma.pt/pt/otempo/"
@@ -575,7 +584,7 @@ def job_warnings() -> None:
         data = resp.json()
         relevant = [
             w for w in data
-            if w['idAreaAviso'] == AREA_ID and w['awarenessLevelID'] != 'green'
+            if w.get('idAreaAviso') == AREA_ID and w.get('awarenessLevelID', '').lower() != 'green'
         ]
 
         if not relevant:
@@ -586,27 +595,29 @@ def job_warnings() -> None:
         location_name = get_location_name()
         has_new_warning = False
         for w in relevant:
-            start_date = w['startTime'].split('T')[0]
+            start_time = w.get('startTime', '')
+            start_date = start_time.split('T')[0] if start_time else 'N/D'
             w_id = (
-                f"{w['idAreaAviso']}_{w['awarenessTypeName']}_"
-                f"{w['awarenessLevelID']}_{start_date}"
+                f"{w.get('idAreaAviso', 'N/D')}_{w.get('awarenessTypeName', 'N/D')}_"
+                f"{w.get('awarenessLevelID', 'N/D')}_{start_date}"
             )
             if w_id not in sent_warnings_cache:
                 try:
                     pretty_start = datetime.strptime(
-                        w['startTime'],
+                        start_time,
                         "%Y-%m-%dT%H:%M:%S"
                     ).strftime("%H:%M %d-%m-%Y")
                 except Exception:
-                    pretty_start = w['startTime'].replace("T", " ")
+                    pretty_start = start_time.replace("T", " ") if start_time else 'N/D'
 
+                end_time = w.get('endTime', '')
                 try:
                     pretty_end = datetime.strptime(
-                        w['endTime'],
+                        end_time,
                         "%Y-%m-%dT%H:%M:%S"
                     ).strftime("%H:%M %d-%m-%Y")
                 except Exception:
-                    pretty_end = w['endTime'].replace("T", " ")
+                    pretty_end = end_time.replace("T", " ") if end_time else 'N/D'
 
                 try:
                     pretty_awareness = {
@@ -614,24 +625,24 @@ def job_warnings() -> None:
                         'ORANGE': '🟠 Alerta Laranja',
                         'RED': '🔴 Alerta Vermelho',
                         'GREEN': '🟢 Alerta Verde'
-                    }[w['awarenessLevelID'].upper()]
+                    }[w.get('awarenessLevelID', '').upper()]
                 except KeyError:
-                    pretty_awareness = w['awarenessLevelID'].capitalize()
+                    pretty_awareness = str(w.get('awarenessLevelID', 'Desconhecido')).capitalize()
 
                 msg = (
                     f"⚠️ <b>AVISO IPMA:</b>\n"
                     f"\n"
                     f"📍 Região: <b>{html.escape(str(location_name))}</b>\n"
-                    f"🔔 {html.escape(str(w['awarenessTypeName']))}\n"
+                    f"🔔 {html.escape(str(w.get('awarenessTypeName', 'N/D')))}\n"
                     f"{html.escape(str(pretty_awareness))}\n"
                     f"🕒 {html.escape(str(pretty_start))} até {html.escape(str(pretty_end))}\n"
                     f"\n"
-                    f"📝 {html.escape(str(w['text']))}\n"
+                    f"📝 {html.escape(str(w.get('text', 'N/D')))}\n"
                     f"\n"
                     f"🌍 Fonte: <a href=\"https://www.ipma.pt/pt/otempo/"
                     f"prev-sam/?p={html.escape(str(AREA_ID), quote=True)}\">ipma.pt</a>"
                 )
-                sticker_path = get_warning_sticker_path(w['awarenessTypeName'])
+                sticker_path = get_warning_sticker_path(w.get('awarenessTypeName', ''))
                 if sticker_path:
                     send_telegram_media(msg, sticker_path)
                 else:
