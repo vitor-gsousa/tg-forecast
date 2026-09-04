@@ -2,6 +2,7 @@ import os
 import time
 import logging
 import json
+import html
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
@@ -441,7 +442,7 @@ def send_telegram_media(caption: str, image_path: str) -> None:
 
         if has_caption:
             data["caption"] = caption
-            data["parse_mode"] = "Markdown"
+            data["parse_mode"] = "HTML"
 
         with open(image_path, 'rb') as f:
             files = {file_key: f}
@@ -473,7 +474,7 @@ def send_message_text(msg: str) -> None:
             json={
                 "chat_id": TELEGRAM_CHAT_ID,
                 "text": msg,
-                "parse_mode": "Markdown"
+                "parse_mode": "HTML"
             },
             timeout=10
         )
@@ -519,18 +520,18 @@ def job_forecast() -> None:
         image_path = get_local_image_path(forecast['idWeatherType'])
 
         caption = (
-            f"👀 *Previsão do tempo para amanhã:*\n"
-            f"📅 *{pretty_date}*\n"
+            f"👀 <b>Previsão do tempo para amanhã:</b>\n"
+            f"📅 <b>{html.escape(str(pretty_date))}</b>\n"
             f"\n"
-            f"📍 Região: *{location_name}*\n"
-            f"🌤️ {weather_desc}\n"
-            f"🌡️ Min: {forecast['tMin']}ºC | Max: {forecast['tMax']}ºC\n"
-            f"☔ Previsão de chuva: {forecast['precipitaProb']}%\n"
-            f"💨 Vento de {get_wind_dir_desc(forecast['predWindDir'])} - "
-            f"{wind_desc}\n"
+            f"📍 Região: <b>{html.escape(str(location_name))}</b>\n"
+            f"🌤️ {html.escape(str(weather_desc))}\n"
+            f"🌡️ Min: {html.escape(str(forecast['tMin']))}ºC | Max: {html.escape(str(forecast['tMax']))}ºC\n"
+            f"☔ Previsão de chuva: {html.escape(str(forecast['precipitaProb']))}%\n"
+            f"💨 Vento de {html.escape(str(get_wind_dir_desc(forecast['predWindDir'])))} - "
+            f"{html.escape(str(wind_desc))}\n"
             f"\n"
-            f"🌍 Fonte: [ipma.pt](https://www.ipma.pt/pt/otempo/"
-            f"prev.localidade.hora/#{location_name}&{location_name})"
+            f"🌍 Fonte: <a href=\"https://www.ipma.pt/pt/otempo/"
+            f"prev.localidade.hora/#{html.escape(str(location_name), quote=True)}&{html.escape(str(location_name), quote=True)}\">ipma.pt</a>"
         )
 
         if image_path:
@@ -610,17 +611,17 @@ def job_warnings() -> None:
                     pretty_awareness = w['awarenessLevelID'].capitalize()
 
                 msg = (
-                    f"⚠️ *AVISO IPMA:*\n"
+                    f"⚠️ <b>AVISO IPMA:</b>\n"
                     f"\n"
-                    f"📍 Região: *{location_name}*\n"
-                    f"🔔 {w['awarenessTypeName']}\n"
-                    f"{pretty_awareness}\n"
-                    f"🕒 {pretty_start} até {pretty_end}\n"
+                    f"📍 Região: <b>{html.escape(str(location_name))}</b>\n"
+                    f"🔔 {html.escape(str(w['awarenessTypeName']))}\n"
+                    f"{html.escape(str(pretty_awareness))}\n"
+                    f"🕒 {html.escape(str(pretty_start))} até {html.escape(str(pretty_end))}\n"
                     f"\n"
-                    f"📝 {w['text']}\n"
+                    f"📝 {html.escape(str(w['text']))}\n"
                     f"\n"
-                    f"🌍 Fonte: [ipma.pt](https://www.ipma.pt/pt/otempo/"
-                    f"prev-sam/?p={AREA_ID})"
+                    f"🌍 Fonte: <a href=\"https://www.ipma.pt/pt/otempo/"
+                    f"prev-sam/?p={html.escape(str(AREA_ID), quote=True)}\">ipma.pt</a>"
                 )
                 sticker_path = get_warning_sticker_path(w['awarenessTypeName'])
                 if sticker_path:
