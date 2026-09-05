@@ -60,28 +60,25 @@
 
 <script>
 function editFeed(id, currentName, currentUrl) {
-    let newName = prompt("Editar Nome do Feed:", currentName);
-    if (newName === null) return; // Cancelado
+    let safeName = currentName.replace(/"/g, '&quot;');
+    let safeUrl = currentUrl.replace(/"/g, '&quot;');
     
-    let newUrl = prompt("Editar URL do Feed:", currentUrl);
-    if (newUrl === null) return; // Cancelado
+    let formHtml = `
+        <form method="POST" action="/feeds/edit/${id}">
+            <label>Nome do Feed</label>
+            <input type="text" name="name" value="${safeName}" required>
+            
+            <label>URL (RSS/Atom)</label>
+            <input type="url" name="url" value="${safeUrl}" required>
+            
+            <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 1rem;">
+                <button type="button" onclick="closeModal()" style="background-color: transparent; border: 1px solid var(--border-color); color: var(--text-color);">Cancelar</button>
+                <button type="submit">Guardar Alterações</button>
+            </div>
+        </form>
+    `;
     
-    if (newName && newUrl) {
-        let form = document.createElement("form");
-        form.method = "POST";
-        form.action = `/feeds/edit/${id}`;
-        
-        let i1 = document.createElement("input");
-        i1.type = "hidden"; i1.name = "name"; i1.value = newName;
-        form.appendChild(i1);
-        
-        let i2 = document.createElement("input");
-        i2.type = "hidden"; i2.name = "url"; i2.value = newUrl;
-        form.appendChild(i2);
-        
-        document.body.appendChild(form);
-        form.submit();
-    }
+    showModal("Editar Feed", formHtml);
 }
 </script>
 {% endblock %}
