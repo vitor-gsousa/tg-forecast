@@ -26,12 +26,13 @@ def process_feeds():
     logging.info("A iniciar leitura de feeds RSS...")
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT id, url, name FROM feeds WHERE status = 'active'")
+    c.execute("SELECT id, url, name, last_checked FROM feeds WHERE status = 'active'")
     feeds = c.fetchall()
 
     new_articles_count = 0
 
     for feed in feeds:
+        is_first_run = (feed['last_checked'] is None)
         try:
             parsed = feedparser.parse(feed['url'])
             if parsed.bozo and not parsed.entries:
@@ -60,17 +61,19 @@ def process_feeds():
                     )
                     continue
 
-                # Novo artigo!
-                logging.info(f"Novo artigo de {feed_title}: {title}")
-                msg = f"📰 <b>{feed_title}</b>\n{title}\n{link}"
-                send_message_text(msg)
-
-                # Save to DB
+                # Guardar na Base de Dados
                 c.execute(
                     "INSERT INTO articles (feed_id, title, link, article_hash, published_at) VALUES (?, ?, ?, ?, ?)",
                     (feed['id'], title, link, art_hash, datetime.now())
                 )
-                new_articles_count += 1
+
+                if is_first_run:
+                    logging.info(f"Artigo ignorado (modo silencioso 1º arranque de {feed_title}): {title}")
+                else:
+                    logging.info(f"Novo artigo de {feed_title}: {title}")
+                    msg = f"📰 <b>{feed_title}</b>\n{title}\n{link}"
+                    send_message_text(msg)
+                    new_articles_count += 1
 
             # Update last_checked
             c.execute("UPDATE feeds SET last_checked = ? WHERE id = ?", (datetime.now(), feed['id']))
