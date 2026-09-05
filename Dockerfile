@@ -9,7 +9,11 @@ ENV TZ=Europe/Lisbon
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY forecast.py .
+COPY main.py .
+COPY modules/ ./modules/
+COPY web/ ./web/
 COPY images/ ./images/
 
-CMD ["python", "forecast.py"]
+EXPOSE 8080
+
+CMD ["python", "main.py"]

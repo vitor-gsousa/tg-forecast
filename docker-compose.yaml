@@ -5,16 +5,17 @@ services:
       dockerfile: Dockerfile
     container_name: tg-forecast-bot
     restart: unless-stopped
+    ports:
+      - "8080:8080"
     environment:
       - TZ=Europe/Lisbon
-      - WARNINGS_CACHE_FILE=/app/cache/sent_warnings_cache.json
+      - DB_PATH=/app/data/tg_forecast.db
     env_file:
       - .env
     volumes:
       - .:/app:ro
       - ./images:/app/images
-      - ./logs:/app/logs
-      - ./cache:/app/cache
+      - ./data:/app/data
     mem_limit: 256m
     mem_reservation: 128m
     logging:

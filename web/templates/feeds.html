@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Gestão de Feeds RSS</h2>
+<div class="card">
+    <form method="POST" action="{{ url_for('feeds') }}" class="d-flex">
+        <div class="flex-1">
+            <label>Nome do Feed</label>
+            <input type="text" name="name" required placeholder="Ex: Notícias Sapo">
+        </div>
+        <div class="flex-1">
+            <label>URL (RSS/Atom)</label>
+            <input type="url" name="url" required placeholder="https://...">
+        </div>
+        <div>
+            <button type="submit">Adicionar Feed</button>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h3>Feeds Configurados</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Nome</th>
+                <th>Última Verificação</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for feed in feeds %}
+            <tr>
+                <td>{{ feed.id }}</td>
+                <td>{{ feed.name }}</td>
+                <td>{{ feed.last_checked or 'Nunca' }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('delete_feed', feed_id=feed.id) }}" style="display:inline;">
+                        <button type="submit" class="btn-danger">Remover</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4">Nenhum feed configurado.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

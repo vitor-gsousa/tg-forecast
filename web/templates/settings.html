@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Configurações do Sistema</h2>
+<div class="card">
+    <form method="POST">
+        <label>Intervalo Verificação RSS (minutos)</label>
+        <input type="number" name="rss_interval" value="{{ rss_interval }}" required>
+        
+        <label>Telegram Bot Token</label>
+        <input type="text" name="bot_token" value="{{ bot_token }}" required>
+        
+        <label>Telegram Chat ID</label>
+        <input type="text" name="chat_id" value="{{ chat_id }}" required>
+        
+        <button type="submit">Guardar Configurações</button>
+    </form>
+</div>
+{% endblock %}

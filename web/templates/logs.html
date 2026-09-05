@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Logs do Sistema</h2>
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Data/Hora</th>
+                <th>Nível</th>
+                <th>Mensagem</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr>
+                <td>{{ log.timestamp }}</td>
+                <td>{{ log.level }}</td>
+                <td>{{ log.message }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3">Nenhum log disponível.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
