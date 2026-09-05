@@ -43,11 +43,9 @@
                         <button type="button" class="btn-icon" title="Editar" onclick="editFeed('{{ feed.id }}', '{{ feed.name }}', '{{ feed.url }}')">
                             <span class="material-symbols-outlined">edit</span>
                         </button>
-                        <form method="POST" action="{{ url_for('delete_feed', feed_id=feed.id) }}" style="display:inline;" onsubmit="return confirm('Tem a certeza que pretende remover este feed?');">
-                            <button type="submit" class="btn-icon danger" title="Remover">
-                                <span class="material-symbols-outlined">delete</span>
-                            </button>
-                        </form>
+                        <button type="button" class="btn-icon danger" title="Remover" onclick="deleteFeed('{{ feed.id }}', '{{ feed.name }}')">
+                            <span class="material-symbols-outlined">delete</span>
+                        </button>
                     </div>
                 </td>
             </tr>
@@ -79,6 +77,22 @@ function editFeed(id, currentName, currentUrl) {
     `;
     
     showModal("Editar Feed", formHtml);
+}
+
+function deleteFeed(id, currentName) {
+    let safeName = currentName.replace(/"/g, '&quot;');
+    let formHtml = `
+        <form method="POST" action="/feeds/delete/${id}">
+            <p>Tem a certeza que pretende remover o feed <strong>${safeName}</strong>?</p>
+            <p style="color: var(--danger-color); font-size: 0.9rem;">Esta ação é irreversível.</p>
+            <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 1.5rem;">
+                <button type="button" onclick="closeModal()" style="background-color: transparent; border: 1px solid var(--border-color); color: var(--text-color);">Cancelar</button>
+                <button type="submit" class="btn-danger">Remover Definitivamente</button>
+            </div>
+        </form>
+    `;
+    
+    showModal("Remover Feed", formHtml);
 }
 </script>
 {% endblock %}
