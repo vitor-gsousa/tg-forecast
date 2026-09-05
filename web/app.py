@@ -88,6 +88,13 @@ def settings():
         check_interval = request.form.get('check_interval')
         forecast_time = request.form.get('forecast_time')
         
+        # Endpoints IPMA
+        ipma_warnings_url = request.form.get('ipma_warnings_url')
+        ipma_forecast_base = request.form.get('ipma_forecast_base')
+        districts_url = request.form.get('districts_url')
+        weather_types_url = request.form.get('weather_types_url')
+        wind_types_url = request.form.get('wind_types_url')
+        
         if rss_interval: set_key(env_path, 'RSS_CHECK_INTERVAL_MINUTES', rss_interval)
         if chat_id: set_key(env_path, 'CHAT_ID', chat_id)
         if bot_token: set_key(env_path, 'BOT_TOKEN', bot_token)
@@ -96,6 +103,12 @@ def settings():
         if target_area_id: set_key(env_path, 'TARGET_AREA_ID', target_area_id)
         if check_interval: set_key(env_path, 'CHECK_INTERVAL_MINUTES', check_interval)
         if forecast_time: set_key(env_path, 'FORECAST_TIME', forecast_time)
+        
+        if ipma_warnings_url: set_key(env_path, 'IPMA_WARNINGS_URL', ipma_warnings_url)
+        if ipma_forecast_base: set_key(env_path, 'IPMA_FORECAST_BASE', ipma_forecast_base)
+        if districts_url: set_key(env_path, 'DISTRICTS_URL', districts_url)
+        if weather_types_url: set_key(env_path, 'WEATHER_TYPES_URL', weather_types_url)
+        if wind_types_url: set_key(env_path, 'WIND_TYPES_URL', wind_types_url)
         
         load_dotenv(override=True)
         flash('Configurações guardadas!')
@@ -110,6 +123,12 @@ def settings():
     check_interval = os.environ.get('CHECK_INTERVAL_MINUTES', '60')
     forecast_time = os.environ.get('FORECAST_TIME', '20:30')
     
+    ipma_warnings_url = os.environ.get('IPMA_WARNINGS_URL', 'https://api.ipma.pt/open-data/forecast/warnings/warnings_www.json')
+    ipma_forecast_base = os.environ.get('IPMA_FORECAST_BASE', 'https://api.ipma.pt/open-data/forecast/meteorology/cities/daily/')
+    districts_url = os.environ.get('DISTRICTS_URL', 'https://api.ipma.pt/open-data/forecast/warnings/warnings_districts.json')
+    weather_types_url = os.environ.get('WEATHER_TYPES_URL', 'https://api.ipma.pt/open-data/weather-type-classe.json')
+    wind_types_url = os.environ.get('WIND_TYPES_URL', 'https://api.ipma.pt/open-data/wind-speed-daily-class.json')
+    
     return render_template('settings.html', 
                            rss_interval=rss_interval, 
                            chat_id=chat_id, 
@@ -117,7 +136,12 @@ def settings():
                            ipma_global_id=ipma_global_id,
                            target_area_id=target_area_id,
                            check_interval=check_interval,
-                           forecast_time=forecast_time)
+                           forecast_time=forecast_time,
+                           ipma_warnings_url=ipma_warnings_url,
+                           ipma_forecast_base=ipma_forecast_base,
+                           districts_url=districts_url,
+                           weather_types_url=weather_types_url,
+                           wind_types_url=wind_types_url)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("WEB_PORT", 8080)), debug=True)

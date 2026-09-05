@@ -33,6 +33,24 @@
         <input type="time" name="forecast_time" value="{{ forecast_time }}" required>
     </div>
 
+    <div class="card" style="margin-bottom: 20px;">
+        <h3 style="margin-top: 0;">🔗 Endpoints da API IPMA (Avançado)</h3>
+        <label>Avisos URL</label>
+        <input type="url" name="ipma_warnings_url" value="{{ ipma_warnings_url }}" required>
+
+        <label>Previsões Diárias (URL Base)</label>
+        <input type="url" name="ipma_forecast_base" value="{{ ipma_forecast_base }}" required>
+
+        <label>Distritos URL</label>
+        <input type="url" name="districts_url" value="{{ districts_url }}" required>
+
+        <label>Tipos de Tempo URL</label>
+        <input type="url" name="weather_types_url" value="{{ weather_types_url }}" required>
+
+        <label>Classes de Vento URL</label>
+        <input type="url" name="wind_types_url" value="{{ wind_types_url }}" required>
+    </div>
+
     <button type="submit" style="width: 100%; padding: 15px; font-size: 1.1rem; margin-bottom: 30px; border-radius: 8px;">Guardar Todas as Configurações</button>
 </form>
 {% endblock %}
