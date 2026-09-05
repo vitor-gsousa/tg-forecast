@@ -51,6 +51,21 @@ def delete_feed(feed_id):
     flash('Feed removido.')
     return redirect(url_for('feeds'))
 
+@app.route('/feeds/edit/<int:feed_id>', methods=['POST'])
+def edit_feed(feed_id):
+    name = request.form.get('name')
+    url = request.form.get('url')
+    if name and url:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("UPDATE feeds SET name = ?, url = ? WHERE id = ?", (name, url, feed_id))
+        conn.commit()
+        conn.close()
+        flash('Feed editado com sucesso!')
+    else:
+        flash('Dados inválidos.', 'error')
+    return redirect(url_for('feeds'))
+
 @app.route('/logs')
 def logs():
     conn = get_db()
@@ -68,9 +83,19 @@ def settings():
         chat_id = request.form.get('chat_id')
         bot_token = request.form.get('bot_token')
         
+        ipma_global_id = request.form.get('ipma_global_id')
+        target_area_id = request.form.get('target_area_id')
+        check_interval = request.form.get('check_interval')
+        forecast_time = request.form.get('forecast_time')
+        
         if rss_interval: set_key(env_path, 'RSS_CHECK_INTERVAL_MINUTES', rss_interval)
         if chat_id: set_key(env_path, 'CHAT_ID', chat_id)
         if bot_token: set_key(env_path, 'BOT_TOKEN', bot_token)
+        
+        if ipma_global_id: set_key(env_path, 'IPMA_GLOBAL_ID', ipma_global_id)
+        if target_area_id: set_key(env_path, 'TARGET_AREA_ID', target_area_id)
+        if check_interval: set_key(env_path, 'CHECK_INTERVAL_MINUTES', check_interval)
+        if forecast_time: set_key(env_path, 'FORECAST_TIME', forecast_time)
         
         load_dotenv(override=True)
         flash('Configurações guardadas!')
@@ -80,7 +105,19 @@ def settings():
     chat_id = os.environ.get('CHAT_ID', '')
     bot_token = os.environ.get('BOT_TOKEN', '')
     
-    return render_template('settings.html', rss_interval=rss_interval, chat_id=chat_id, bot_token=bot_token)
+    ipma_global_id = os.environ.get('IPMA_GLOBAL_ID', '1010500')
+    target_area_id = os.environ.get('TARGET_AREA_ID', 'AVEIRO')
+    check_interval = os.environ.get('CHECK_INTERVAL_MINUTES', '60')
+    forecast_time = os.environ.get('FORECAST_TIME', '20:30')
+    
+    return render_template('settings.html', 
+                           rss_interval=rss_interval, 
+                           chat_id=chat_id, 
+                           bot_token=bot_token,
+                           ipma_global_id=ipma_global_id,
+                           target_area_id=target_area_id,
+                           check_interval=check_interval,
+                           forecast_time=forecast_time)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("WEB_PORT", 8080)), debug=True)

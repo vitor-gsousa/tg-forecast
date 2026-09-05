@@ -1,18 +1,38 @@
 {% extends "base.html" %}
 {% block content %}
 <h2>Configurações do Sistema</h2>
-<div class="card">
-    <form method="POST">
-        <label>Intervalo Verificação RSS (minutos)</label>
-        <input type="number" name="rss_interval" value="{{ rss_interval }}" required>
-        
+<form method="POST">
+    
+    <div class="card" style="margin-bottom: 20px;">
+        <h3 style="margin-top: 0;">🤖 Configurações Globais / Bot</h3>
         <label>Telegram Bot Token</label>
         <input type="text" name="bot_token" value="{{ bot_token }}" required>
         
         <label>Telegram Chat ID</label>
         <input type="text" name="chat_id" value="{{ chat_id }}" required>
-        
-        <button type="submit">Guardar Configurações</button>
-    </form>
-</div>
+    </div>
+
+    <div class="card" style="margin-bottom: 20px;">
+        <h3 style="margin-top: 0;">📰 Notícias (RSS)</h3>
+        <label>Intervalo de Verificação (minutos)</label>
+        <input type="number" name="rss_interval" value="{{ rss_interval }}" required>
+    </div>
+
+    <div class="card" style="margin-bottom: 20px;">
+        <h3 style="margin-top: 0;">🌤️ Meteorologia (IPMA)</h3>
+        <label>Global ID (ex: 1010500 para Lisboa)</label>
+        <input type="text" name="ipma_global_id" value="{{ ipma_global_id }}" required>
+
+        <label>Zona de Aviso (ex: AVEIRO, LISBOA)</label>
+        <input type="text" name="target_area_id" value="{{ target_area_id }}" required>
+
+        <label>Intervalo de Verificação de Avisos (minutos)</label>
+        <input type="number" name="check_interval" value="{{ check_interval }}" required>
+
+        <label>Hora da Previsão Diária</label>
+        <input type="time" name="forecast_time" value="{{ forecast_time }}" required>
+    </div>
+
+    <button type="submit" style="width: 100%; padding: 15px; font-size: 1.1rem; margin-bottom: 30px; border-radius: 8px;">Guardar Todas as Configurações</button>
+</form>
 {% endblock %}

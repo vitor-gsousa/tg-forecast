@@ -12,7 +12,11 @@
             <input type="url" name="url" required placeholder="https://...">
         </div>
         <div>
-            <button type="submit">Adicionar Feed</button>
+            <!-- A margem inferior 1rem nivela o botão com os inputs, que têm margin-bottom: 1rem -->
+            <button type="submit" style="margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                <span class="material-symbols-outlined" style="font-size: 1.2rem;">add</span>
+                Adicionar
+            </button>
         </div>
     </form>
 </div>
@@ -35,9 +39,16 @@
                 <td>{{ feed.name }}</td>
                 <td>{{ feed.last_checked or 'Nunca' }}</td>
                 <td>
-                    <form method="POST" action="{{ url_for('delete_feed', feed_id=feed.id) }}" style="display:inline;">
-                        <button type="submit" class="btn-danger">Remover</button>
-                    </form>
+                    <div style="display: flex; gap: 0.25rem;">
+                        <button type="button" class="btn-icon" title="Editar" onclick="editFeed('{{ feed.id }}', '{{ feed.name }}', '{{ feed.url }}')">
+                            <span class="material-symbols-outlined">edit</span>
+                        </button>
+                        <form method="POST" action="{{ url_for('delete_feed', feed_id=feed.id) }}" style="display:inline;" onsubmit="return confirm('Tem a certeza que pretende remover este feed?');">
+                            <button type="submit" class="btn-icon danger" title="Remover">
+                                <span class="material-symbols-outlined">delete</span>
+                            </button>
+                        </form>
+                    </div>
                 </td>
             </tr>
             {% else %}
@@ -46,4 +57,31 @@
         </tbody>
     </table>
 </div>
+
+<script>
+function editFeed(id, currentName, currentUrl) {
+    let newName = prompt("Editar Nome do Feed:", currentName);
+    if (newName === null) return; // Cancelado
+    
+    let newUrl = prompt("Editar URL do Feed:", currentUrl);
+    if (newUrl === null) return; // Cancelado
+    
+    if (newName && newUrl) {
+        let form = document.createElement("form");
+        form.method = "POST";
+        form.action = `/feeds/edit/${id}`;
+        
+        let i1 = document.createElement("input");
+        i1.type = "hidden"; i1.name = "name"; i1.value = newName;
+        form.appendChild(i1);
+        
+        let i2 = document.createElement("input");
+        i2.type = "hidden"; i2.name = "url"; i2.value = newUrl;
+        form.appendChild(i2);
+        
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
 {% endblock %}

@@ -24,7 +24,8 @@ def run_schedule():
 def run_web():
     port = int(os.environ.get("WEB_PORT", 8080))
     logging.info(f"Frontend Web iniciado na porta {port}.")
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    from waitress import serve
+    serve(app, host='0.0.0.0', port=port)
 
 if __name__ == '__main__':
     load_dotenv()
