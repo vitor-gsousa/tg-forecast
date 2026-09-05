@@ -36,12 +36,24 @@ def process_feeds():
         is_first_run = (feed['last_checked'] is None)
         try:
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept': 'application/rss+xml, application/rdf+xml, application/atom+xml, application/xml, text/xml, */*;q=0.9',
+                'Accept-Language': 'pt-PT,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
             }
             resp = requests.get(feed['url'], headers=headers, timeout=15)
-            resp.raise_for_status()
             
-            parsed = feedparser.parse(resp.content)
+            # Se for 403, pode ser a Cloudflare.
+            if resp.status_code != 200:
+                logging.warning(f"Erro ao processar feed {feed['name']}: HTTP {resp.status_code}")
+                continue
+                
+            # Correção de sintaxe para sites (como o Imediato) que enviam XML mal formatado
+            raw_content = resp.content.decode('utf-8', errors='ignore')
+            raw_content = raw_content.replace('"xmlns:', '" xmlns:')
+                
+            parsed = feedparser.parse(raw_content)
             if parsed.bozo and not parsed.entries:
                 logging.warning(f"Erro ao processar feed {feed['name']} ({feed['url']}): {parsed.bozo_exception}")
                 continue
