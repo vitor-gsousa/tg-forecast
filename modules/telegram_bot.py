@@ -58,7 +58,11 @@ def send_message_text(msg: str) -> None:
                 "chat_id": chat_id,
                 "text": msg,
                 "parse_mode": "HTML",
-                "disable_web_page_preview": False
+                "link_preview_options": {
+                    "is_disabled": False,
+                    "prefer_large_media": True,
+                    "show_above_text": True
+                }
             },
             timeout=10
         )
