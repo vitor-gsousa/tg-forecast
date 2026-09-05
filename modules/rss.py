@@ -1,5 +1,6 @@
 import feedparser
 import logging
+import requests
 import hashlib
 from difflib import SequenceMatcher
 from datetime import datetime
@@ -34,7 +35,13 @@ def process_feeds():
     for feed in feeds:
         is_first_run = (feed['last_checked'] is None)
         try:
-            parsed = feedparser.parse(feed['url'])
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+            resp = requests.get(feed['url'], headers=headers, timeout=15)
+            resp.raise_for_status()
+            
+            parsed = feedparser.parse(resp.content)
             if parsed.bozo and not parsed.entries:
                 logging.warning(f"Erro ao processar feed {feed['name']} ({feed['url']}): {parsed.bozo_exception}")
                 continue

@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import logging
+import datetime
 
 DB_PATH = os.environ.get("DB_PATH", "tg_forecast.db")
 
@@ -54,9 +55,10 @@ class DBLogHandler(logging.Handler):
         try:
             conn = get_db()
             c = conn.cursor()
+            now_local = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             c.execute(
-                "INSERT INTO logs (level, message) VALUES (?, ?)",
-                (record.levelname, self.format(record))
+                "INSERT INTO logs (timestamp, level, message) VALUES (?, ?, ?)",
+                (now_local, record.levelname, self.format(record))
             )
             conn.commit()
             conn.close()
