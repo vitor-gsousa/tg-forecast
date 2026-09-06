@@ -2,6 +2,8 @@ import os
 import time
 import logging
 import html
+import urllib.parse
+import threading
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
@@ -36,6 +38,7 @@ WARNING_EXPIRY_GRACE_HOURS = 6
 location_name_cache: str = ""
 weather_types_cache: Optional[Dict[int, str]] = None
 wind_types_cache: Optional[Dict[int, str]] = None
+cache_lock = threading.Lock()
 
 WEATHER_TYPES_FALLBACK = {
     0: "Sem informação", 1: "Céu limpo", 2: "Céu pouco nublado",
@@ -73,12 +76,14 @@ def cleanup_sent_warnings_cache() -> int:
     """Remove entradas expiradas do cache de avisos na SQLite."""
     now_ts = time.time()
     conn = get_db()
-    c = conn.cursor()
-    c.execute("DELETE FROM ipma_warnings WHERE expiry_ts <= ?", (now_ts,))
-    removed = c.rowcount
-    conn.commit()
-    conn.close()
-    return removed
+    try:
+        c = conn.cursor()
+        c.execute("DELETE FROM ipma_warnings WHERE expiry_ts <= ?", (now_ts,))
+        removed = c.rowcount
+        conn.commit()
+        return removed
+    finally:
+        conn.close()
 
 def get_warning_expiry_ts(end_time_raw: str) -> float:
     now_ts = time.time()
@@ -99,78 +104,82 @@ def get_warning_expiry_ts(end_time_raw: str) -> float:
 
 def get_location_name() -> str:
     global location_name_cache
-    if location_name_cache:
-        return location_name_cache
-    try:
-        if not DISTRICTS:
+    with cache_lock:
+        if location_name_cache:
+            return location_name_cache
+        try:
+            if not DISTRICTS:
+                location_name_cache = AREA_ID
+                return AREA_ID
+            data = requests.get(DISTRICTS, timeout=10).json()
+            for item in data['data']:
+                if item['idAreaAviso'] == AREA_ID:
+                    location_name_cache = item['local']
+                    return location_name_cache
             location_name_cache = AREA_ID
             return AREA_ID
-        data = requests.get(DISTRICTS, timeout=10).json()
-        for item in data['data']:
-            if item['idAreaAviso'] == AREA_ID:
-                location_name_cache = item['local']
-                return location_name_cache
-        location_name_cache = AREA_ID
-        return AREA_ID
-    except Exception:
-        location_name_cache = AREA_ID
-        return AREA_ID
+        except Exception:
+            location_name_cache = AREA_ID
+            return AREA_ID
 
 
 def load_weather_types() -> Dict[int, str]:
     global weather_types_cache
-    if weather_types_cache is not None:
+    with cache_lock:
+        if weather_types_cache is not None:
+            return weather_types_cache
+    
+        if not WEATHER_TYPES:
+            weather_types_cache = WEATHER_TYPES_FALLBACK
+            return weather_types_cache
+    
+        try:
+            resp = requests.get(WEATHER_TYPES, timeout=10)
+            resp.raise_for_status()
+            data = resp.json().get("data", [])
+            mapping = {
+                int(item["idWeatherType"]): item.get(
+                    "descWeatherTypePT",
+                    f"Desconhecido ({item['idWeatherType']})"
+                )
+                for item in data
+                if item.get("idWeatherType") is not None
+            }
+            weather_types_cache = mapping if mapping else WEATHER_TYPES_FALLBACK
+        except Exception as e:
+            logging.error(f"Erro ao carregar weather types: {e}")
+            weather_types_cache = WEATHER_TYPES_FALLBACK
+    
         return weather_types_cache
-
-    if not WEATHER_TYPES:
-        weather_types_cache = WEATHER_TYPES_FALLBACK
-        return weather_types_cache
-
-    try:
-        resp = requests.get(WEATHER_TYPES, timeout=10)
-        resp.raise_for_status()
-        data = resp.json().get("data", [])
-        mapping = {
-            int(item["idWeatherType"]): item.get(
-                "descWeatherTypePT",
-                f"Desconhecido ({item['idWeatherType']})"
-            )
-            for item in data
-        }
-        weather_types_cache = mapping if mapping else WEATHER_TYPES_FALLBACK
-    except Exception as e:
-        logging.error(f"Erro ao carregar weather types: {e}")
-        weather_types_cache = WEATHER_TYPES_FALLBACK
-
-    return weather_types_cache
 
 
 def load_wind_types() -> Dict[int, str]:
     global wind_types_cache
-    if wind_types_cache is not None:
-        return wind_types_cache
-    try:
-        if not WIND_TYPES:
-            wind_types_cache = {}
+    with cache_lock:
+        if wind_types_cache is not None:
             return wind_types_cache
-
-        resp = requests.get(WIND_TYPES, timeout=10)
-        resp.raise_for_status()
-        data = resp.json().get("data", [])
-        wind_types_cache = {
-            int(item.get("classWindSpeed")): item.get(
-                "descClassWindSpeedDailyPT",
-                item.get("descClassWindSpeedPT"),
-                str(item.get("classWindSpeed"))
-            )
-            for item in data
-            if item.get("classWindSpeed") is not None
-        }
-    except Exception as e:
-        logging.error(f"Erro ao carregar wind types: {e}")
-        wind_types_cache = {}
-
-    return wind_types_cache
+        try:
+            if not WIND_TYPES:
+                wind_types_cache = {}
+                return wind_types_cache
+    
+            resp = requests.get(WIND_TYPES, timeout=10)
+            resp.raise_for_status()
+            data = resp.json().get("data", [])
+            wind_types_cache = {
+                int(item.get("classWindSpeed")): item.get(
+                    "descClassWindSpeedDailyPT",
+                    item.get("descClassWindSpeedPT"),
+                    str(item.get("classWindSpeed"))
+                )
+                for item in data
+                if item.get("classWindSpeed") is not None
+            }
+        except Exception as e:
+            logging.error(f"Erro ao carregar wind types: {e}")
+            wind_types_cache = {}
+    
+        return wind_types_cache
 
 
 def resolve_wind_desc(raw_code: Any) -> str:
@@ -186,8 +195,12 @@ def get_wind_dir_desc(dir_code: str) -> str:
     return WIND_DIR_PT.get(dir_code, dir_code)
 
 
-def get_local_image_path(weather_id: int) -> Optional[str]:
-    wid = int(weather_id)
+def get_local_image_path(weather_id: Any) -> Optional[str]:
+    try:
+        wid = int(weather_id)
+    except (TypeError, ValueError):
+        return None
+
     if wid < 10:
         base = f"w_ic_d_0{wid}"
     else:
@@ -221,57 +234,84 @@ def get_warning_sticker_path(awareness_type: str) -> Optional[str]:
 
 # --- Jobs ---
 
-def job_forecast() -> None:
-    logging.info("A processar previsão diária...")
+def fetch_forecast_data() -> Optional[Dict[str, Any]]:
+    if not FORECAST_BASE or not GLOBAL_ID:
+        logging.error("Variáveis de ambiente IPMA_FORECAST_BASE ou IPMA_GLOBAL_ID em falta.")
+        return None
+
     try:
         resp = requests.get(f"{FORECAST_BASE}{GLOBAL_ID}.json", timeout=15)
         resp.raise_for_status()
         forecast_data = resp.json().get('data', [])
-        if len(forecast_data) > 1:
-            forecast = forecast_data[1]
-        elif len(forecast_data) == 1:
-            logging.warning("Previsão para amanhã indisponível. A usar a previsão de hoje.")
+        tomorrow_str = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+        forecast = next((item for item in forecast_data if item.get("forecastDate") == tomorrow_str), None)
+        
+        if not forecast:
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            forecast = next((item for item in forecast_data if item.get("forecastDate") == today_str), None)
+            if forecast:
+                logging.warning(f"Previsão para amanhã ({tomorrow_str}) indisponível. A usar a previsão de hoje ({today_str}).")
+                
+        if not forecast and forecast_data:
             forecast = forecast_data[0]
-        else:
+            logging.warning(f"Previsão esperada indisponível. A usar a primeira disponível: {forecast.get('forecastDate')}.")
+            
+        if not forecast:
             logging.warning("Sem dados de previsão disponíveis na resposta da API.")
-            return
+            return None
+            
+        return forecast
+    except Exception as e:
+        logging.error(f"Erro ao obter dados da previsão: {e}")
+        return None
 
+def format_forecast_message(forecast: Dict[str, Any], location_name: str, weather_desc: str, wind_desc: str) -> str:
+    try:
+        pretty_date = datetime.strptime(
+            forecast.get('forecastDate', ''),
+            "%Y-%m-%d"
+        ).strftime("%d-%m-%Y")
+    except Exception:
+        pretty_date = forecast.get('forecastDate', 'N/D')
+
+    return (
+        f"👀 <b>Previsão do tempo para amanhã:</b>\n"
+        f"📅 <b>{html.escape(str(pretty_date))}</b>\n"
+        f"\n"
+        f"📍 Região: <b>{html.escape(str(location_name))}</b>\n"
+        f"🌤️ {html.escape(str(weather_desc))}\n"
+        f"🌡️ Min: {html.escape(str(forecast.get('tMin', 'N/D')))}ºC | Max: {html.escape(str(forecast.get('tMax', 'N/D')))}ºC\n"
+        f"☔ Previsão de chuva: {html.escape(str(forecast.get('precipitaProb', 'N/D')))}%\n"
+        f"💨 Vento de {html.escape(str(get_wind_dir_desc(forecast.get('predWindDir', 'N/D'))))} - "
+        f"{html.escape(str(wind_desc))}\n"
+        f"\n"
+        f"🌍 Fonte: <a href=\"https://www.ipma.pt/pt/otempo/"
+        f"prev.localidade.hora/#{urllib.parse.quote(str(location_name))}&{urllib.parse.quote(str(location_name))}\">ipma.pt</a>"
+    )
+
+def job_forecast() -> None:
+    logging.info("A processar previsão diária...")
+    forecast = fetch_forecast_data()
+    if not forecast:
+        return
+
+    try:
         weather_map = load_weather_types()
-        id_weather = forecast.get('idWeatherType', -99)
-        weather_desc = weather_map.get(
-            int(id_weather),
-            str(id_weather)
-        )
+        id_weather = forecast.get('idWeatherType')
+        if id_weather is None:
+            id_weather = -99
+            
+        try:
+            weather_desc = weather_map.get(int(id_weather), str(id_weather))
+        except (TypeError, ValueError):
+            weather_desc = str(id_weather)
 
         wind_code = forecast.get('classWindSpeed', -99)
         wind_desc = resolve_wind_desc(wind_code)
-
         location_name = get_location_name()
 
-        try:
-            pretty_date = datetime.strptime(
-                forecast.get('forecastDate', ''),
-                "%Y-%m-%d"
-            ).strftime("%d-%m-%Y")
-        except Exception:
-            pretty_date = forecast.get('forecastDate', 'N/D')
-
-        image_path = get_local_image_path(forecast.get('idWeatherType', 0))
-
-        caption = (
-            f"👀 <b>Previsão do tempo para amanhã:</b>\n"
-            f"📅 <b>{html.escape(str(pretty_date))}</b>\n"
-            f"\n"
-            f"📍 Região: <b>{html.escape(str(location_name))}</b>\n"
-            f"🌤️ {html.escape(str(weather_desc))}\n"
-            f"🌡️ Min: {html.escape(str(forecast.get('tMin', 'N/D')))}ºC | Max: {html.escape(str(forecast.get('tMax', 'N/D')))}ºC\n"
-            f"☔ Previsão de chuva: {html.escape(str(forecast.get('precipitaProb', 'N/D')))}%\n"
-            f"💨 Vento de {html.escape(str(get_wind_dir_desc(forecast.get('predWindDir', 'N/D'))))} - "
-            f"{html.escape(str(wind_desc))}\n"
-            f"\n"
-            f"🌍 Fonte: <a href=\"https://www.ipma.pt/pt/otempo/"
-            f"prev.localidade.hora/#{html.escape(str(location_name), quote=True)}&{html.escape(str(location_name), quote=True)}\">ipma.pt</a>"
-        )
+        caption = format_forecast_message(forecast, location_name, weather_desc, wind_desc)
+        image_path = get_local_image_path(id_weather)
 
         if image_path:
             send_telegram_media(caption, image_path)
@@ -279,10 +319,85 @@ def job_forecast() -> None:
         else:
             send_message_text(caption)
             logging.info("Previsão enviada sem imagem.")
-
     except Exception as e:
-        logging.error(f"Erro no job forecast: {e}")
+        logging.error(f"Erro ao processar dados da previsão: {e}")
 
+
+def fetch_active_warnings() -> list[Dict[str, Any]]:
+    if not WARNINGS_URL:
+        return []
+    try:
+        resp = requests.get(WARNINGS_URL, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        return [
+            w for w in data
+            if w.get('idAreaAviso') == AREA_ID and w.get('awarenessLevelID', '').lower() != 'green'
+        ]
+    except Exception as e:
+        logging.error(f"Erro ao obter avisos: {e}")
+        return []
+
+def format_warning_message(w: Dict[str, Any], location_name: str) -> str:
+    start_time = w.get('startTime', '')
+    try:
+        pretty_start = datetime.strptime(
+            start_time,
+            "%Y-%m-%dT%H:%M:%S"
+        ).strftime("%H:%M %d-%m-%Y")
+    except Exception:
+        pretty_start = start_time.replace("T", " ") if start_time else 'N/D'
+
+    end_time = w.get('endTime', '')
+    try:
+        pretty_end = datetime.strptime(
+            end_time,
+            "%Y-%m-%dT%H:%M:%S"
+        ).strftime("%H:%M %d-%m-%Y")
+    except Exception:
+        pretty_end = end_time.replace("T", " ") if end_time else 'N/D'
+
+    try:
+        pretty_awareness = {
+            'YELLOW': '🟡 Alerta Amarelo',
+            'ORANGE': '🟠 Alerta Laranja',
+            'RED': '🔴 Alerta Vermelho',
+            'GREEN': '🟢 Alerta Verde'
+        }[w.get('awarenessLevelID', '').upper()]
+    except KeyError:
+        pretty_awareness = str(w.get('awarenessLevelID', 'Desconhecido')).capitalize()
+
+    return (
+        f"⚠️ <b>AVISO IPMA:</b>\n"
+        f"\n"
+        f"📍 Região: <b>{html.escape(str(location_name))}</b>\n"
+        f"🔔 {html.escape(str(w.get('awarenessTypeName', 'N/D')))}\n"
+        f"{html.escape(str(pretty_awareness))}\n"
+        f"🕒 {html.escape(str(pretty_start))} até {html.escape(str(pretty_end))}\n"
+        f"\n"
+        f"📝 {html.escape(str(w.get('text', 'N/D')))}\n"
+        f"\n"
+        f"🌍 Fonte: <a href=\"https://www.ipma.pt/pt/otempo/"
+        f"prev-sam/?p={urllib.parse.quote(str(AREA_ID))}\">ipma.pt</a>"
+    )
+
+def is_warning_sent(warning_id: str) -> bool:
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute("SELECT warning_id FROM ipma_warnings WHERE warning_id = ?", (warning_id,))
+        return c.fetchone() is not None
+    finally:
+        conn.close()
+
+def mark_warning_as_sent(warning_id: str, expiry_ts: float) -> None:
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute("INSERT INTO ipma_warnings (warning_id, expiry_ts) VALUES (?, ?)", (warning_id, expiry_ts))
+        conn.commit()
+    finally:
+        conn.close()
 
 def job_warnings() -> None:
     logging.info("A verificar avisos...")
@@ -291,23 +406,11 @@ def job_warnings() -> None:
         if removed:
             logging.info(f"Limpeza de cache: removidas {removed} entradas expiradas.")
 
-        if not WARNINGS_URL:
-            return
-        resp = requests.get(WARNINGS_URL, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
-        relevant = [
-            w for w in data
-            if w.get('idAreaAviso') == AREA_ID and w.get('awarenessLevelID', '').lower() != 'green'
-        ]
-
+        relevant = fetch_active_warnings()
         if not relevant:
             return
 
         location_name = get_location_name()
-        
-        conn = get_db()
-        c = conn.cursor()
         
         for w in relevant:
             start_time = w.get('startTime', '')
@@ -317,62 +420,20 @@ def job_warnings() -> None:
                 f"{w.get('awarenessLevelID', 'N/D')}_{start_date}"
             )
             
-            c.execute("SELECT warning_id FROM ipma_warnings WHERE warning_id = ?", (w_id,))
-            if not c.fetchone():
-                try:
-                    pretty_start = datetime.strptime(
-                        start_time,
-                        "%Y-%m-%dT%H:%M:%S"
-                    ).strftime("%H:%M %d-%m-%Y")
-                except Exception:
-                    pretty_start = start_time.replace("T", " ") if start_time else 'N/D'
-
-                end_time = w.get('endTime', '')
-                try:
-                    pretty_end = datetime.strptime(
-                        end_time,
-                        "%Y-%m-%dT%H:%M:%S"
-                    ).strftime("%H:%M %d-%m-%Y")
-                except Exception:
-                    pretty_end = end_time.replace("T", " ") if end_time else 'N/D'
-
-                try:
-                    pretty_awareness = {
-                        'YELLOW': '🟡 Alerta Amarelo',
-                        'ORANGE': '🟠 Alerta Laranja',
-                        'RED': '🔴 Alerta Vermelho',
-                        'GREEN': '🟢 Alerta Verde'
-                    }[w.get('awarenessLevelID', '').upper()]
-                except KeyError:
-                    pretty_awareness = str(w.get('awarenessLevelID', 'Desconhecido')).capitalize()
-
-                msg = (
-                    f"⚠️ <b>AVISO IPMA:</b>\n"
-                    f"\n"
-                    f"📍 Região: <b>{html.escape(str(location_name))}</b>\n"
-                    f"🔔 {html.escape(str(w.get('awarenessTypeName', 'N/D')))}\n"
-                    f"{html.escape(str(pretty_awareness))}\n"
-                    f"🕒 {html.escape(str(pretty_start))} até {html.escape(str(pretty_end))}\n"
-                    f"\n"
-                    f"📝 {html.escape(str(w.get('text', 'N/D')))}\n"
-                    f"\n"
-                    f"🌍 Fonte: <a href=\"https://www.ipma.pt/pt/otempo/"
-                    f"prev-sam/?p={html.escape(str(AREA_ID), quote=True)}\">ipma.pt</a>"
-                )
+            if not is_warning_sent(w_id):
+                msg = format_warning_message(w, location_name)
                 sticker_path = get_warning_sticker_path(w.get('awarenessTypeName', ''))
+                
                 if sticker_path:
                     send_telegram_media(msg, sticker_path)
                 else:
                     send_message_text(msg)
                 
                 expiry = get_warning_expiry_ts(w.get('endTime', ''))
-                c.execute("INSERT INTO ipma_warnings (warning_id, expiry_ts) VALUES (?, ?)", (w_id, expiry))
-                conn.commit()
+                mark_warning_as_sent(w_id, expiry)
                 logging.info(f"Aviso enviado: {w_id}")
             else:
                 logging.info(f"Aviso já enviado: {w_id}")
-                
-        conn.close()
     except Exception as e:
         logging.error(f"Erro avisos: {e}")
 
