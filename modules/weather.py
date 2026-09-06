@@ -167,9 +167,9 @@ def load_wind_types() -> Dict[int, str]:
             resp.raise_for_status()
             data = resp.json().get("data", [])
             wind_types_cache = {
-                int(item.get("classWindSpeed")): item.get(
-                    "descClassWindSpeedDailyPT",
-                    item.get("descClassWindSpeedPT"),
+                int(item.get("classWindSpeed")): (
+                    item.get("descClassWindSpeedDailyPT") or 
+                    item.get("descClassWindSpeedPT") or 
                     str(item.get("classWindSpeed"))
                 )
                 for item in data
