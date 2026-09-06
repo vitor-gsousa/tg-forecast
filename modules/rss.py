@@ -49,7 +49,7 @@ def process_feeds():
                 logging.warning(f"Erro ao processar feed {feed['name']}: HTTP {resp.status_code}")
                 continue
                 
-            # Correção de sintaxe para sites (como o Imediato) que enviam XML mal formatado
+            # Correção de sintaxe para sites que enviam XML mal formatado
             raw_content = resp.content.decode('utf-8', errors='ignore')
             raw_content = raw_content.replace('"xmlns:', '" xmlns:')
                 
@@ -90,7 +90,7 @@ def process_feeds():
                     logging.info(f"Artigo ignorado (modo silencioso 1º arranque de {feed_title}): {title}")
                 else:
                     logging.info(f"Novo artigo de {feed_title}: {title}")
-                    msg = f"📰 <b>{feed_title}</b>\n{title}\n{link}"
+                    msg = f"📰 <b>{feed_title}</b>\n<a href='{link}'>{title}</a>"
                     send_message_text(msg)
                     new_articles_count += 1
 
