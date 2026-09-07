@@ -20,10 +20,10 @@
 
     <div class="card" style="margin-bottom: 20px;">
         <h3 style="margin-top: 0;">🌤️ Meteorologia (IPMA)</h3>
-        <label>Global ID (ex: 1010500 para Lisboa)</label>
+        <label><p title="Obter chave globalIdLocal em https://api.ipma.pt/open-data/distrits-islands.json">Global ID (ex: 1010500 para Lisboa)</p></label>
         <input type="text" name="ipma_global_id" value="{{ ipma_global_id }}" required>
 
-        <label>Zona de Aviso (ex: AVEIRO, LISBOA)</label>
+        <label><p title="Obter chave idAreaAviso em https://api.ipma.pt/open-data/distrits-islands.json">Zona de Aviso (ex: AVR: Aveiro, LSB: Lisboa)</p></label>
         <input type="text" name="target_area_id" value="{{ target_area_id }}" required>
 
         <label>Intervalo de Verificação de Avisos (minutos)</label>
