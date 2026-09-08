@@ -289,10 +289,33 @@ def format_forecast_message(forecast: Dict[str, Any], location_name: str, weathe
         f"prev.localidade.hora/#{urllib.parse.quote(str(location_name))}&{urllib.parse.quote(str(location_name))}\">ipma.pt</a>"
     )
 
+def is_forecast_sent(forecast_date: str) -> bool:
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute("SELECT forecast_date FROM ipma_forecasts WHERE forecast_date = ?", (forecast_date,))
+        return c.fetchone() is not None
+    finally:
+        conn.close()
+
+def mark_forecast_as_sent(forecast_date: str) -> None:
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute("INSERT OR IGNORE INTO ipma_forecasts (forecast_date) VALUES (?)", (forecast_date,))
+        conn.commit()
+    finally:
+        conn.close()
+
 def job_forecast() -> None:
     logging.info("A processar previsão diária...")
     forecast = fetch_forecast_data()
     if not forecast:
+        return
+
+    forecast_date = forecast.get('forecastDate')
+    if forecast_date and is_forecast_sent(forecast_date):
+        logging.info(f"Previsão para {forecast_date} já foi enviada.")
         return
 
     try:
@@ -319,6 +342,10 @@ def job_forecast() -> None:
         else:
             send_message_text(caption)
             logging.info("Previsão enviada sem imagem.")
+
+        if forecast_date:
+            mark_forecast_as_sent(forecast_date)
+            
     except Exception as e:
         logging.error(f"Erro ao processar dados da previsão: {e}")
 

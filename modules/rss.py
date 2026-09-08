@@ -78,6 +78,7 @@ def process_feeds():
                         "INSERT INTO articles (feed_id, title, link, article_hash, published_at) VALUES (?, ?, ?, ?, ?)",
                         (feed['id'], title, link, art_hash, datetime.now())
                     )
+                    conn.commit()
                     continue
 
                 # Guardar na Base de Dados
@@ -93,6 +94,8 @@ def process_feeds():
                     msg = f"📰 <b>{feed_title}</b>\n<a href='{link}'>{title}</a>"
                     send_message_text(msg)
                     new_articles_count += 1
+
+                conn.commit()
 
             # Update last_checked
             c.execute("UPDATE feeds SET last_checked = ? WHERE id = ?", (datetime.now(), feed['id']))
